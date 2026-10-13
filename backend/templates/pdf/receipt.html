@@ -1,0 +1,44 @@
+{% extends "pdf/base.html" %}
+{% load money %}
+{% block title %}
+  <div class="type">RECEIPT</div>
+  <div><strong>{{ receipt.number }}</strong></div>
+  <div class="small">Date: {{ receipt.date|date:"d M Y" }}</div>
+  {% if receipt.is_cancelled %}<div class="cancelled">CANCELLED</div>{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="parties">
+  <div class="box">
+    <h3>Received from</h3>
+    <strong>{{ receipt.client.name }}</strong><br>
+    <pre>{{ receipt.client.address }}</pre>
+    Ph: {{ receipt.client.phone|phone }}
+  </div>
+  <div class="box">
+    <h3>Payment</h3>
+    Amount: <strong>₹ {{ receipt.amount|inr }}</strong><br>
+    Mode: {{ receipt.get_mode_display }}{% if receipt.reference %} · Ref: {{ receipt.reference }}{% endif %}<br>
+    {% if receipt.booking %}Event: {{ receipt.booking.title }} ({{ receipt.booking.number }}){% endif %}
+  </div>
+</div>
+<p class="words">{{ amount_words }}</p>
+
+{% if allocations %}
+<table class="items" style="margin-top:10px">
+  <thead><tr><th>Against invoice</th><th>Invoice date</th><th class="num">Invoice total</th><th class="num">Applied</th></tr></thead>
+  <tbody>
+    {% for a in allocations %}
+    <tr><td>{{ a.invoice.number }}</td><td>{{ a.invoice.invoice_date|date:"d M Y" }}</td><td class="num">{{ a.invoice.total|inr }}</td><td class="num">{{ a.amount|inr }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if unapplied %}<p class="small">₹ {{ unapplied|inr }} held as advance.</p>{% endif %}
+{% if receipt.notes %}<p class="small">Notes: {{ receipt.notes }}</p>{% endif %}
+
+<div class="sign">
+  For <strong>{{ company.trade_name|default:company.legal_name }}</strong><br><br><br>
+  {{ company.authorised_signatory|default:"Authorised signatory" }}
+</div>
+{% endblock %}

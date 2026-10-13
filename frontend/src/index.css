@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+/*
+ * Brand tokens, taken from the Mitra visiting card: royal purple and orchid (the lotus),
+ * antique gold, on warm ivory. Change them here and everything follows.
+ */
+@theme {
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  /* Engraved capitals, as in "EVENTS BEYOND EXPECTATION". */
+  --font-caps: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+  /* Script accent, as in "Memorable". Decorative words only. */
+  --font-script: 'Great Vibes', cursive;
+
+  --color-brand-50: #f8f2fb;
+  --color-brand-100: #efe3f6;
+  --color-brand-200: #dcc4eb;
+  --color-brand-300: #c29fdb;
+  --color-brand-400: #9a68c0;
+  --color-brand-500: #7a3ea6;
+  --color-brand-600: #632d8c;
+  --color-brand-700: #512277;
+  --color-brand-800: #3f1a5e;
+  --color-brand-900: #2b1042;
+
+  /* The lotus's centre petal. */
+  --color-orchid-300: #f0a6d6;
+  --color-orchid-400: #e070bd;
+  --color-orchid-500: #c4449f;
+
+  --color-gold-100: #faf1dc;
+  --color-gold-200: #f2e0b3;
+  --color-gold-300: #e7cb86;
+  --color-gold-400: #d8b05b;
+  --color-gold-500: #c39539;
+  --color-gold-600: #a27a26;
+  /* Small gold text on ivory needs this depth to stay readable (≈ 5.5:1). */
+  --color-gold-700: #7c5c18;
+
+  --color-ivory: #fcf8f1;
+  --color-cream: #f6eee0;
+}
+
+@layer base {
+  body {
+    @apply bg-ivory font-sans text-stone-800 antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+}
+
+/* Drawer (shared/ui/Drawer): slide in from the right. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+dialog.drawer[open] {
+  animation: drawer-in 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog.drawer[open] {
+    animation: none;
+  }
+}

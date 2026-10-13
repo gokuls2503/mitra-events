@@ -1,0 +1,127 @@
+{% extends "pdf/base.html" %}
+{% load money %}
+{% block title %}
+  <div class="type">{% if kind == "invoice" %}TAX INVOICE{% else %}QUOTATION{% endif %}</div>
+  <div><strong>{% if kind == "invoice" %}{{ doc.number|default:"DRAFT" }}{% else %}{{ doc.number }}{% endif %}</strong></div>
+  {% if kind == "invoice" %}
+    <div class="small">Date: {{ doc.invoice_date|date:"d M Y" }}</div>
+    {% if doc.due_date %}<div class="small">Due: {{ doc.due_date|date:"d M Y" }}</div>{% endif %}
+    {% if doc.status == "CANCELLED" %}<div class="cancelled">CANCELLED</div>{% elif doc.status == "DRAFT" %}<div class="cancelled" style="color:#a16207;border-color:#a16207">DRAFT — NOT A VALID INVOICE</div>{% endif %}
+  {% else %}
+    <div class="small">Date: {{ doc.date|date:"d M Y" }}</div>
+    {% if doc.valid_until %}<div class="small">Valid until: {{ doc.valid_until|date:"d M Y" }}</div>{% endif %}
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="parties">
+  <div class="box">
+    <h3>{% if kind == "invoice" %}Bill to{% else %}Prepared for{% endif %}</h3>
+    {% if kind == "invoice" and doc.billing_name %}
+      <strong>{{ doc.billing_name }}</strong><br>
+      <pre>{{ doc.billing_address }}</pre>
+      {% if doc.billing_phone %}Ph: {{ doc.billing_phone|phone }}<br>{% endif %}
+      {% if doc.billing_gstin %}<strong>GSTIN:</strong> {{ doc.billing_gstin }}{% endif %}
+    {% else %}
+      <strong>{{ doc.client.name }}</strong><br>
+      <pre>{{ doc.client.address }}</pre>
+      Ph: {{ doc.client.phone|phone }}<br>
+      {% if doc.client.gstin %}<strong>GSTIN:</strong> {{ doc.client.gstin }}{% endif %}
+    {% endif %}
+  </div>
+  <div class="box">
+    <h3>Details</h3>
+    Place of supply: {{ place_of_supply }}<br>
+    {% if doc.booking %}Event: {{ doc.booking.title }}<br>Event date: {{ doc.booking.event_date|date:"d M Y" }} · {{ doc.booking.venue }}<br>Booking: {{ doc.booking.number }}{% endif %}
+  </div>
+</div>
+
+<table class="items">
+  <thead>
+    <tr>
+      <th style="width:4%">#</th>
+      <th>Description</th>
+      <th style="width:8%">SAC</th>
+      <th class="num" style="width:7%">Qty</th>
+      <th class="num" style="width:11%">Rate</th>
+      <th class="num" style="width:9%">Disc.</th>
+      <th class="num" style="width:12%">Taxable</th>
+      <th class="num" style="width:6%">GST</th>
+      <th class="num" style="width:12%">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for i in items %}
+    <tr>
+      <td>{{ forloop.counter }}</td>
+      <td>{{ i.description }}</td>
+      <td>{{ i.sac }}</td>
+      <td class="num">{{ i.quantity|floatformat:"-2" }} {{ i.unit }}</td>
+      <td class="num">{{ i.rate|inr }}</td>
+      <td class="num">{% if i.discount %}{{ i.discount|inr }}{% else %}—{% endif %}</td>
+      <td class="num">{{ i.taxable_amount|inr }}</td>
+      <td class="num">{{ i.tax_rate|floatformat:"-2" }}%</td>
+      <td class="num">{{ i.amount|inr }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<table class="totals">
+  <tr><td>Taxable value</td><td class="right">₹ {{ doc.taxable_total|inr }}</td></tr>
+  {% if intra_state %}
+    <tr><td>CGST</td><td class="right">₹ {{ doc.cgst_total|inr }}</td></tr>
+    <tr><td>SGST</td><td class="right">₹ {{ doc.sgst_total|inr }}</td></tr>
+  {% else %}
+    <tr><td>IGST</td><td class="right">₹ {{ doc.igst_total|inr }}</td></tr>
+  {% endif %}
+  {% if doc.round_off %}<tr><td>Round off</td><td class="right">{{ doc.round_off|floatformat:2 }}</td></tr>{% endif %}
+  <tr class="grand"><td>Total</td><td class="right">₹ {{ doc.total|inr }}</td></tr>
+  {% if kind == "invoice" and doc.amount_paid %}
+    <tr><td>Paid</td><td class="right">₹ {{ doc.amount_paid|inr }}</td></tr>
+    <tr><td><strong>Balance due</strong></td><td class="right"><strong>₹ {{ doc.balance_due|inr }}</strong></td></tr>
+  {% endif %}
+</table>
+<div class="words">{{ amount_words }}</div>
+
+<table class="tax">
+  <thead>
+    <tr>
+      <th>GST rate</th><th class="right">Taxable</th>
+      {% if intra_state %}<th class="right">CGST</th><th class="right">SGST</th>{% else %}<th class="right">IGST</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in tax_rows %}
+    <tr>
+      <td>{{ r.rate|floatformat:"-2" }}%</td><td class="right">{{ r.taxable|inr }}</td>
+      {% if intra_state %}<td class="right">{{ r.cgst|inr }}</td><td class="right">{{ r.sgst|inr }}</td>{% else %}<td class="right">{{ r.igst|inr }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="foot">
+  <div class="box">
+    <h3>Payment details</h3>
+    {% if company.bank_name %}
+      Bank: {{ company.bank_name }}{% if company.bank_branch %}, {{ company.bank_branch }}{% endif %}<br>
+      A/c name: {{ company.bank_account_name|default:company.legal_name }}<br>
+      A/c no: {{ company.bank_account_number }} · IFSC: {{ company.bank_ifsc }}<br>
+    {% endif %}
+    {% if company.upi_id %}UPI: {{ company.upi_id }}{% endif %}
+    {% if not company.bank_name and not company.upi_id %}<span class="muted">Add bank / UPI details in Accounts → Settings.</span>{% endif %}
+  </div>
+  <div class="box">
+    <h3>Terms</h3>
+    <pre class="small">{{ doc.terms }}</pre>
+    {% if doc.notes %}<p class="small"><strong>Notes:</strong> {{ doc.notes }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="sign">
+  For <strong>{{ company.trade_name|default:company.legal_name }}</strong><br><br><br>
+  {{ company.authorised_signatory|default:"Authorised signatory" }}
+</div>
+{% if kind == "invoice" %}<p class="small muted center">This is a computer-generated invoice.</p>{% endif %}
+{% endblock %}

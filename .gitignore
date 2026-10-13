@@ -1,0 +1,25 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+backend/.env
+backend/media/
+backend/staticfiles/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS / editor
+.DS_Store
+dist-ssr/
+
+# Local secrets (the *.example files are committed)
+.env
+.env.*
+!.env.example
+
+# Tool / log output
+.gstack/
+*.log
