@@ -1,233 +1,219 @@
 #!/usr/bin/env bash
+# Mitra Events — one-shot deploy for a fresh Ubuntu 24.04 VPS (run as root).
+# Safe to re-run: the first run installs everything, later runs pull + rebuild + restart.
 #
-# deploy.sh — update the live Mitra Events site on a Linux server (no Docker).
-#
-# Run it on the server, from the project checkout:
-#
-#   ./deploy.sh                  pull the latest code, update the backend, rebuild the website
-#   ./deploy.sh --backend-only   API/admin only (Python deps, migrations, static files, restart)
-#   ./deploy.sh --frontend-only  rebuild the website only (e.g. so search engines see new content)
-#   ./deploy.sh --no-pull        deploy what is already checked out, without `git pull`
-#   ./deploy.sh --rollback       switch the website back to the previous build
-#
-# Settings (environment variables; defaults in brackets):
-#   BRANCH          git branch to deploy                       [main]
-#   SERVICE         systemd unit running gunicorn, or "none"   [mitra-events]
-#   WEB_ROOT        where website builds are kept              [/var/www/mitra-events]
-#   KEEP_RELEASES   how many website builds to keep            [5]
-#   PRERENDER_API_URL  API the build reads content from        [$VITE_SITE_URL/api/v1]
-#
-# ─── One-time server setup (Ubuntu/Debian) ─────────────────────────────────────────────
-#
-#  1. Packages:  python3-venv, PostgreSQL, nginx, Node.js 22, and Pango for PDF invoices:
-#       sudo apt install python3-venv postgresql nginx libpango-1.0-0 libpangoft2-1.0-0
-#  2. Create the database and user, then copy and fill in the two env files:
-#       backend/.env    (from backend/.env.example) — DJANGO_DEBUG=False, a long random
-#                       DJANGO_SECRET_KEY, DATABASE_URL, DJANGO_ALLOWED_HOSTS=<your domain>,
-#                       CORS_ALLOWED_ORIGINS and CSRF_TRUSTED_ORIGINS=https://<your domain>
-#       frontend/.env   (from frontend/.env.example) — VITE_SITE_URL=https://<your domain>
-#  3. A systemd unit, /etc/systemd/system/mitra-events.service:
-#
-#       [Unit]
-#       Description=Mitra Events API (gunicorn)
-#       After=network.target postgresql.service
-#
-#       [Service]
-#       User=<deploy user>
-#       WorkingDirectory=/path/to/mitra-events/backend
-#       Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
-#       ExecStart=/path/to/mitra-events/backend/.venv/bin/gunicorn config.wsgi:application \
-#                 --bind 127.0.0.1:8000 --workers 3 --timeout 60
-#       Restart=always
-#
-#       [Install]
-#       WantedBy=multi-user.target
-#
-#     then: sudo systemctl daemon-reload && sudo systemctl enable mitra-events
-#  4. An nginx site (then add HTTPS with certbot: sudo certbot --nginx -d <your domain>):
-#
-#       server {
-#         server_name <your domain>;
-#         root /var/www/mitra-events/current;
-#         client_max_body_size 10M;                      # photo uploads
-#
-#         location ~ ^/(api|django-admin)/ {
-#           proxy_pass http://127.0.0.1:8000;
-#           proxy_set_header Host $host;
-#           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-#           proxy_set_header X-Forwarded-Proto $scheme;
-#         }
-#         location /static/ { alias /path/to/mitra-events/backend/staticfiles/; }
-#         location /media/  { alias /path/to/mitra-events/backend/media/; }
-#         location /admin   { try_files $uri /spa.html; }   # the admin is a single-page app
-#         location /        { try_files $uri $uri/index.html $uri/ =404; }
-#         error_page 404 /404.html;
-#       }
-#
-#  5. First deploy: ./deploy.sh — then create the owner login:
-#       cd backend && DJANGO_SETTINGS_MODULE=config.settings.prod .venv/bin/python manage.py createsuperuser
-#
-# The website build reads live content through the public HTTPS address, so nginx and the
-# certificate must be working first. (Production settings redirect plain HTTP to HTTPS.)
-# ──────────────────────────────────────────────────────────────────────────────────────
 
-set -Eeuo pipefail
+#   bash deploy.sh
+#
+set -euo pipefail
 
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND="$APP_DIR/backend"
-FRONTEND="$APP_DIR/frontend"
-BRANCH="${BRANCH:-main}"
-SERVICE="${SERVICE:-mitra-events}"
-WEB_ROOT="${WEB_ROOT:-/var/www/mitra-events}"
-KEEP_RELEASES="${KEEP_RELEASES:-5}"
-export DJANGO_SETTINGS_MODULE=config.settings.prod
+DOMAIN="mitraevents.in"
+WWW="www.${DOMAIN}"
+REPO="https://github.com/gokuls2503/mitra-events.git"
+BRANCH="main"
+APP_USER="mitra"
+APP_DIR="/var/www/mitra-events"
+BACKEND="${APP_DIR}/backend"
+FRONTEND="${APP_DIR}/frontend"
+DB_NAME="mitra_events"
+DB_USER="mitra"
+LE_EMAIL="${LE_EMAIL:-gokuls2503@gmail.com}"   # Let's Encrypt expiry notices
 
-DO_PULL=1 DO_BACKEND=1 DO_FRONTEND=1 ROLLBACK=0
-for arg in "$@"; do
-  case "$arg" in
-    --backend-only) DO_FRONTEND=0 ;;
-    --frontend-only) DO_BACKEND=0 ;;
-    --no-pull) DO_PULL=0 ;;
-    --rollback) ROLLBACK=1 ;;
-    -h | --help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unknown option: $arg (see ./deploy.sh --help)" >&2; exit 2 ;;
-  esac
-done
+log() { printf '\n\033[1;35m==> %s\033[0m\n' "$*"; }
+[[ $EUID -eq 0 ]] || { echo "Run as root"; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
 
-# ─── Output helpers ───────────────────────────────────────────────────────────────────
-STEP="starting"
-step() { STEP="$1"; printf '\n\033[1;35m▸ %s\033[0m\n' "$1"; }
-ok() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
-warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
-die() { printf '\n\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
-trap 'printf "\n\033[31m✗ Deploy failed during: %s\033[0m\n  Nothing after this step was changed.\n" "$STEP" >&2' ERR
+# ---------------------------------------------------------------- packages
+log "System packages"
+apt-get update -y
+apt-get install -y git curl ca-certificates nginx postgresql \
+  python3 python3-venv python3-dev build-essential \
+  libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
+  certbot python3-certbot-nginx ufw
 
-need() { command -v "$1" >/dev/null 2>&1 || die "'$1' is not installed."; }
-
-restart_service() {
-  if [[ "$SERVICE" == "none" ]]; then
-    warn "SERVICE=none — restart gunicorn yourself"
-    return
-  fi
-  if [[ $EUID -eq 0 ]]; then systemctl restart "$SERVICE"; else sudo systemctl restart "$SERVICE"; fi
-  ok "Restarted $SERVICE"
-}
-
-# Waits until the API answers, so the website build doesn't read from a half-started server.
-wait_for_api() {
-  local url="$1/website/settings/"
-  for _ in $(seq 1 30); do
-    if curl -fsS -o /dev/null "$url"; then
-      ok "API is answering at $1"
-      return
-    fi
-    sleep 1
-  done
-  die "The API didn't answer at $url within 30s. Check: sudo journalctl -u $SERVICE -n 50"
-}
-
-# ─── Rollback (website only) ──────────────────────────────────────────────────────────
-if [[ $ROLLBACK -eq 1 ]]; then
-  step "Rolling the website back"
-  [[ -L "$WEB_ROOT/current" ]] || die "No current release at $WEB_ROOT/current."
-  current="$(readlink "$WEB_ROOT/current")"
-  # The build just before the one being served (so repeated rollbacks keep stepping back).
-  previous="$(ls -1d "$WEB_ROOT"/releases/*/ 2>/dev/null | sed 's:/$::' | sort | awk -v cur="$current" '$0 == cur { print prev; exit } { prev = $0 }')"
-  [[ -n "$previous" ]] || die "There is no earlier build to go back to."
-  ln -sfn "$previous" "$WEB_ROOT/current.tmp" && mv -Tf "$WEB_ROOT/current.tmp" "$WEB_ROOT/current"
-  ok "Website now serves $(basename "$previous")"
-  warn "This only rolls back the website. To roll back the API: git checkout <commit> && ./deploy.sh --backend-only --no-pull"
-  exit 0
+if ! command -v node >/dev/null || [[ "$(node -v | cut -d. -f1 | tr -d v)" -lt 22 ]]; then
+  log "Node.js 22"
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y nodejs
 fi
 
-# ─── Pre-flight ───────────────────────────────────────────────────────────────────────
-step "Checking the server"
-need git
-[[ $DO_BACKEND -eq 1 ]] && need python3
-[[ $DO_FRONTEND -eq 1 ]] && { need node; need npm; need curl; }
-[[ -f "$BACKEND/.env" ]] || die "backend/.env is missing — copy backend/.env.example and fill it in."
-if grep -qiE '^\s*DJANGO_DEBUG\s*=\s*(true|1|yes)' "$BACKEND/.env"; then
-  die "backend/.env has DJANGO_DEBUG=True. Production must run with DJANGO_DEBUG=False."
-fi
-if [[ -f "$FRONTEND/.env" ]]; then
-  # The build's pre-render step is a plain Node script, so it doesn't read .env itself.
-  set -a
-  # shellcheck disable=SC1091
-  source "$FRONTEND/.env"
-  set +a
-elif [[ $DO_FRONTEND -eq 1 ]]; then
-  die "frontend/.env is missing — copy frontend/.env.example and set VITE_SITE_URL."
-fi
-if [[ $DO_FRONTEND -eq 1 ]]; then
-  [[ "${VITE_SITE_URL:-}" == https://* ]] || die "Set VITE_SITE_URL in frontend/.env to the live https:// address."
-  [[ "$VITE_SITE_URL" != *your-domain.example* ]] || die "VITE_SITE_URL in frontend/.env is still the example domain."
-fi
-# The public API address: used to check the API is up, and by the website build.
-if [[ -n "${VITE_SITE_URL:-}" ]]; then
-  export PRERENDER_API_URL="${PRERENDER_API_URL:-${VITE_SITE_URL%/}/api/v1}"
-fi
-ok "Settings look right"
+# ---------------------------------------------------------------- user + code
+id -u "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash "$APP_USER"
+mkdir -p "$APP_DIR"; chown "$APP_USER:$APP_USER" "$APP_DIR"
 
-# ─── Code ─────────────────────────────────────────────────────────────────────────────
-cd "$APP_DIR"
-OLD_REV="$(git rev-parse --short HEAD)"
-if [[ $DO_PULL -eq 1 ]]; then
-  step "Getting the latest code ($BRANCH)"
-  # Refuse to deploy over edits made directly on the server; they'd be lost or merged badly.
-  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
-    git status --short --untracked-files=no
-    die "There are uncommitted changes on the server (listed above). Commit or discard them first."
-  fi
-  git fetch --quiet origin "$BRANCH"
-  git checkout --quiet "$BRANCH"
-  git merge --ff-only --quiet "origin/$BRANCH" || die "Can't fast-forward to origin/$BRANCH (the server copy has diverged)."
+log "Code"
+if [[ -d "$APP_DIR/.git" ]]; then
+  sudo -u "$APP_USER" git -C "$APP_DIR" fetch --depth 1 origin "$BRANCH"
+  sudo -u "$APP_USER" git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+else
+  sudo -u "$APP_USER" git clone --depth 1 -b "$BRANCH" "$REPO" "$APP_DIR"
 fi
-NEW_REV="$(git rev-parse --short HEAD)"
-if [[ "$OLD_REV" == "$NEW_REV" ]]; then ok "At $NEW_REV (no new commits)"; else ok "Updated $OLD_REV → $NEW_REV"; fi
 
-# ─── Backend ──────────────────────────────────────────────────────────────────────────
-if [[ $DO_BACKEND -eq 1 ]]; then
-  step "Updating the API"
-  cd "$BACKEND"
-  [[ -d .venv ]] || { python3 -m venv .venv && ok "Created the Python environment"; }
-  .venv/bin/pip install --quiet --upgrade pip
-  .venv/bin/pip install --quiet -r requirements.txt
-  ok "Python packages installed"
+# ---------------------------------------------------------------- database + .env
+if [[ ! -f "$BACKEND/.env" ]]; then
+  log "PostgreSQL database + backend/.env (first run)"
+  DB_PASS="$(openssl rand -hex 24)"
+  SECRET="$(openssl rand -base64 48 | tr -d '\n=/+')"
+  sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+DO \$\$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='${DB_USER}') THEN
+    CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASS}';
+  ELSE
+    ALTER ROLE ${DB_USER} PASSWORD '${DB_PASS}';
+  END IF;
+END \$\$;
+SQL
+  sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 \
+    || sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
 
-  .venv/bin/python manage.py check --deploy --fail-level ERROR
+  cat > "$BACKEND/.env" <<ENV
+DJANGO_SECRET_KEY=${SECRET}
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS=${DOMAIN},${WWW},127.0.0.1,localhost
+DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
+CORS_ALLOWED_ORIGINS=https://${DOMAIN},https://${WWW}
+CSRF_TRUSTED_ORIGINS=https://${DOMAIN},https://${WWW}
+ENV
+  chown "$APP_USER:$APP_USER" "$BACKEND/.env"; chmod 600 "$BACKEND/.env"
+fi
+
+# ---------------------------------------------------------------- backend
+log "Backend: venv, migrate, collectstatic"
+sudo -u "$APP_USER" bash -c "
+  set -e; cd '$BACKEND'
+  [[ -d .venv ]] || python3 -m venv .venv
+  .venv/bin/pip install -q --upgrade pip
+  .venv/bin/pip install -q -r requirements.txt gunicorn
+  export DJANGO_SETTINGS_MODULE=config.settings.prod
   .venv/bin/python manage.py migrate --noinput
-  ok "Database migrated"
-  .venv/bin/python manage.py collectstatic --noinput --verbosity 0
-  ok "Static files collected"
-  # Adds any missing starter materials; never changes or re-adds ones the client edited.
-  .venv/bin/python manage.py seed_materials
+  .venv/bin/python manage.py collectstatic --noinput -v 0
+  .venv/bin/python manage.py seed_materials   # adds missing starter materials only
   mkdir -p media
+"
 
-  step "Restarting the API"
-  restart_service
-  if [[ -n "${PRERENDER_API_URL:-}" ]]; then wait_for_api "$PRERENDER_API_URL"; else warn "No VITE_SITE_URL set — skipped the API check"; fi
+cat > /etc/systemd/system/mitra-backend.service <<UNIT
+[Unit]
+Description=Mitra Events Django (gunicorn)
+After=network.target postgresql.service
+
+[Service]
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=${BACKEND}
+Environment=DJANGO_SETTINGS_MODULE=config.settings.prod
+ExecStart=${BACKEND}/.venv/bin/gunicorn config.wsgi:application \\
+  --bind 127.0.0.1:8000 --workers 3 --timeout 120 \\
+  --access-logfile - --error-logfile -
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now mitra-backend
+systemctl restart mitra-backend
+
+# ---------------------------------------------------------------- frontend
+# The prerenderer fetches content from Django over plain HTTP. Prod settings force an
+# HTTPS redirect, so a throwaway gunicorn on :8001 with base settings serves the build.
+log "Frontend: npm ci + prerendered build"
+sudo -u "$APP_USER" bash -c "
+  set -e; cd '$BACKEND'
+  DJANGO_SETTINGS_MODULE=config.settings.base .venv/bin/gunicorn config.wsgi:application \
+    --bind 127.0.0.1:8001 --workers 1 --daemon --pid /tmp/mitra-build.pid
+  for i in \$(seq 1 30); do curl -sf http://127.0.0.1:8001/api/v1/website/services/ >/dev/null && break; sleep 1; done
+  cd '$FRONTEND'
+  export VITE_SITE_URL=https://${DOMAIN} PRERENDER_API_URL=http://127.0.0.1:8001/api/v1
+  npm ci --no-audit --no-fund
+  status=0; npm run build || status=\$?
+  kill \$(cat /tmp/mitra-build.pid) 2>/dev/null || true
+  exit \$status
+"
+
+# ---------------------------------------------------------------- nginx
+log "Nginx"
+cat > /etc/nginx/sites-available/mitra-events <<NGINX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} ${WWW};
+
+    root ${FRONTEND}/dist;
+    client_max_body_size 25M;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain;
+
+    # Django: API, docs, emergency admin
+    location ~ ^/(api|django-admin)/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120s;
+    }
+
+    location /static/ { alias ${BACKEND}/staticfiles/; expires 30d; access_log off; }
+    location /media/  { alias ${BACKEND}/media/;       expires 7d;  access_log off; }
+
+    # Hashed Vite bundles
+    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; access_log off; }
+
+    # React admin — never prerendered
+    location = /admin { try_files /spa.html =404; }
+    location /admin/  { try_files /spa.html =404; }
+
+    # Prerendered public pages, else real 404 page
+    location / {
+        try_files \$uri \$uri/index.html =404;
+    }
+    error_page 404 /404.html;
+}
+NGINX
+ln -sf /etc/nginx/sites-available/mitra-events /etc/nginx/sites-enabled/mitra-events
+rm -f /etc/nginx/sites-enabled/default
+# nginx (www-data) must be able to traverse into the app dir
+chmod o+x /var/www "$APP_DIR" "$BACKEND" "$FRONTEND"
+chmod -R o+rX "$FRONTEND/dist" "$BACKEND/staticfiles" "$BACKEND/media"
+nginx -t && systemctl reload nginx
+
+# ---------------------------------------------------------------- firewall
+ufw allow OpenSSH >/dev/null
+ufw allow 'Nginx Full' >/dev/null
+ufw --force enable >/dev/null
+
+# ---------------------------------------------------------------- HTTPS
+SERVER_IP="$(curl -s4 https://api.ipify.org || hostname -I | awk '{print $1}')"
+DNS_IP="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
+if [[ -d "/etc/letsencrypt/live/${DOMAIN}" ]]; then
+  certbot --nginx -d "$DOMAIN" -d "$WWW" --non-interactive --reinstall --redirect >/dev/null || true
+  log "HTTPS already set up"
+elif [[ "$DNS_IP" == "$SERVER_IP" ]]; then
+  log "HTTPS certificate"
+  certbot --nginx -d "$DOMAIN" -d "$WWW" --non-interactive --agree-tos -m "$LE_EMAIL" --redirect
+else
+  log "SKIPPED HTTPS: ${DOMAIN} resolves to '${DNS_IP:-nothing}', this server is ${SERVER_IP}."
+  echo "    Point DNS A records (@ and www) to ${SERVER_IP}, wait for it to resolve, then re-run this script."
 fi
 
-# ─── Website ──────────────────────────────────────────────────────────────────────────
-if [[ $DO_FRONTEND -eq 1 ]]; then
-  step "Building the website"
-  [[ $DO_BACKEND -eq 1 ]] || wait_for_api "$PRERENDER_API_URL"
-  cd "$FRONTEND"
-  npm ci --no-audit --no-fund --loglevel=error
-  npm run build
-  ok "Built and pre-rendered"
-
-  step "Publishing the website"
-  release="$WEB_ROOT/releases/$(date +%Y%m%d-%H%M%S)-$NEW_REV"
-  mkdir -p "$WEB_ROOT/releases"
-  cp -a dist "$release"
-  # Swap the `current` link in one step, so visitors never see a half-copied site.
-  ln -sfn "$release" "$WEB_ROOT/current.tmp"
-  mv -Tf "$WEB_ROOT/current.tmp" "$WEB_ROOT/current"
-  ok "Now serving $(basename "$release")"
-  # Keep the last few builds for --rollback.
-  ls -1d "$WEB_ROOT"/releases/*/ | sed 's:/$::' | sort | head -n "-$KEEP_RELEASES" | xargs -r rm -rf
+# ---------------------------------------------------------------- done
+log "Health check"
+systemctl is-active mitra-backend
+if [[ -d "/etc/letsencrypt/live/${DOMAIN}" ]]; then
+  curl -s -o /dev/null -w "Home page:  HTTP %{http_code}\n" --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/"
+  curl -s -o /dev/null -w "API:        HTTP %{http_code}\n" --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/api/v1/website/services/"
+else
+  curl -s -o /dev/null -w "Home page:  HTTP %{http_code}\n" -H "Host: ${DOMAIN}" http://127.0.0.1/
 fi
 
-trap - ERR
-printf '\n\033[1;32m✓ Deployed %s\033[0m\n' "$NEW_REV"
+cat <<DONE
+
+Deployed.
+  First time only — create the owner login for /admin:
+    cd ${BACKEND} && sudo -u ${APP_USER} DJANGO_SETTINGS_MODULE=config.settings.prod .venv/bin/python manage.py createsuperuser
+
+  Logs:     journalctl -u mitra-backend -f
+  Update:   bash deploy.sh   (pulls ${BRANCH}, migrates, rebuilds, restarts)
+DONE
