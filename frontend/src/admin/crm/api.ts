@@ -27,13 +27,25 @@ export interface Lead {
   id: number
   name: string
   phone: string
+  /** Up to two more numbers, +91XXXXXXXXXX. */
+  extra_phones: string[]
   email: string
   client: number | null
   client_name: string | null
+  /** The first event type picked (drives filters and booking conversion). */
   event_type: EventType | ''
+  /** Every event type, in the order picked. */
+  event_types: EventType[]
+  /** All picked types joined: "Engagement, Wedding, Birthday". */
   event_type_label: string
   event_date: string | null
+  end_date: string | null
+  /** "HH:MM:SS" */
+  start_time: string | null
+  setup_time: string | null
   venue: string
+  venue_address: string
+  coordinator: number | null
   guest_count: number | null
   budget: string | null
   message: string
@@ -114,7 +126,11 @@ export interface Booking {
   client_phone: string
   lead_id: number | null
   title: string
+  /** The first event type picked. */
   event_type: EventType
+  /** Every event type, in the order picked. */
+  event_types: EventType[]
+  /** All picked types joined: "Engagement, Wedding". */
   event_type_label: string
   package: number | null
   package_name: string | null

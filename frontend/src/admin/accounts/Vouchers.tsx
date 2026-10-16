@@ -7,6 +7,7 @@ import { useAuth } from '@/shared/auth/useAuth'
 import { fmtDate, todayISO } from '@/shared/dates'
 import { Button } from '@/shared/ui/Button'
 import { SelectField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
 
 import { EmptyState, FormError, Pagination, QueryState } from '../kit'
@@ -31,8 +32,8 @@ export function VouchersPage() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <TextField label="From" type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1) }} />
-        <TextField label="To" type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} />
+        <DateField label="From" className="w-full sm:w-44" value={from} max={to || undefined} onChange={(v) => { setFrom(v); setPage(1) }} />
+        <DateField label="To" className="w-full sm:w-44" value={to} min={from || undefined} onChange={(v) => { setTo(v); setPage(1) }} />
         <SelectField label="Type" options={[{ value: '', label: 'All vouchers' }, ...VOUCHER_TYPES]} value={type} onChange={(e) => { setType(e.target.value); setPage(1) }} />
         <div className="ml-auto flex gap-2">
           {hasRole('OWNER', 'ACCOUNTANT') && <FileButton kind="xlsx" url="/accounts/reports/day-book/" params={{ from, to, export: 'xlsx' }} label="Day book" />}
@@ -168,7 +169,7 @@ function VoucherForm({ onDone }: { onDone: () => void }) {
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <SelectField label="Voucher type" options={VOUCHER_TYPES.filter((t) => t.manual)} value={type} onChange={(e) => setType(e.target.value as VoucherType)} />
-        <TextField label="Date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+        <DateField label="Date" required value={date} onChange={setDate} />
         <TextField label="Narration" value={narration} onChange={(e) => setNarration(e.target.value)} />
       </div>
       {HINTS[type] && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-900">{HINTS[type]}</p>}

@@ -27,7 +27,25 @@ class Client(AuditedModel):
         return f"{self.name} ({self.phone})"
 
 
-class Lead(AuditedModel):
+class EventTypesMixin:
+    """For models with `event_type` (the first pick, used by filters, analytics and documents)
+    and `event_types` (every pick, in the order chosen). Keeps the two in step on save."""
+
+    def save(self, *args, **kwargs):
+        if self.event_types:
+            self.event_type = self.event_types[0]
+        elif self.event_type:
+            self.event_types = [self.event_type]
+        super().save(*args, **kwargs)
+
+    @property
+    def event_types_label(self):
+        """ "Engagement, Wedding, Birthday" — in the order they were picked."""
+        labels = dict(EventType.choices)
+        return ", ".join(labels.get(t, t) for t in self.event_types or ([self.event_type] if self.event_type else []))
+
+
+class Lead(EventTypesMixin, AuditedModel):
     """An enquiry, from the website or entered by staff, moving through the sales pipeline."""
 
     class Status(models.TextChoices):
@@ -54,11 +72,23 @@ class Lead(AuditedModel):
 
     name = models.CharField(max_length=120)
     phone = models.CharField(max_length=16)
+    extra_phones = models.JSONField(default=list, blank=True, help_text="Up to two more numbers, normalised +91XXXXXXXXXX")
     email = models.EmailField(blank=True)
     client = models.ForeignKey(Client, null=True, blank=True, on_delete=models.PROTECT, related_name="leads")
+    # The first event type chosen; kept for filters, analytics and booking conversion.
     event_type = models.CharField(max_length=20, choices=EventType.choices, blank=True)
+    # Every event type for this enquiry, in the order they were picked.
+    event_types = models.JSONField(default=list, blank=True)
     event_date = models.DateField(null=True, blank=True)
+    # Planning details captured while enquiring; they pre-fill Confirm booking.
+    end_date = models.DateField(null=True, blank=True, help_text="For multi-day events")
+    start_time = models.TimeField(null=True, blank=True)
+    setup_time = models.TimeField(null=True, blank=True, help_text="When the decor team must arrive")
     venue = models.CharField(max_length=200, blank=True)
+    venue_address = models.TextField(blank=True)
+    coordinator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="coordinated_leads"
+    )
     guest_count = models.PositiveIntegerField(null=True, blank=True)
     budget = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True)
     message = models.TextField(blank=True)
@@ -81,7 +111,7 @@ class Lead(AuditedModel):
         indexes = [models.Index(fields=["status", "-created_at"])]
 
     def __str__(self):
-        return f"{self.name} — {self.get_event_type_display() or 'enquiry'}"
+        return f"{self.name} — {self.event_types_label or 'enquiry'}"
 
     @property
     def is_open(self):
@@ -149,7 +179,7 @@ class FollowUp(TimeStampedModel):
         return self.completed_at is not None
 
 
-class Booking(AuditedModel):
+class Booking(EventTypesMixin, AuditedModel):
     """A confirmed event. Created by converting a won lead, or directly for repeat clients."""
 
     class Status(models.TextChoices):
@@ -162,7 +192,9 @@ class Booking(AuditedModel):
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="bookings")
     lead = models.OneToOneField(Lead, null=True, blank=True, on_delete=models.SET_NULL, related_name="booking")
     title = models.CharField(max_length=160, help_text='e.g. "Priya & Karthik — Wedding reception"')
+    # The first event type picked; `event_types` holds them all, in order.
     event_type = models.CharField(max_length=20, choices=EventType.choices)
+    event_types = models.JSONField(default=list, blank=True)
     package = models.ForeignKey("website.Package", null=True, blank=True, on_delete=models.SET_NULL)
     event_date = models.DateField(db_index=True)
     end_date = models.DateField(null=True, blank=True, help_text="For multi-day events")

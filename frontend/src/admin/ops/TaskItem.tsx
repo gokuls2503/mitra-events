@@ -1,13 +1,14 @@
 import clsx from 'clsx'
 import { CalendarDays, Flag } from 'lucide-react'
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
 import { daysUntil, fmtShortDate } from '@/shared/dates'
 import { Button } from '@/shared/ui/Button'
 import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
 
 import { useBookings, useTeam } from '../crm/api'
@@ -94,7 +95,7 @@ export function TaskForm({ task, bookingId, onDone }: { task?: Task; bookingId?:
   const { data: events } = useBookings({ upcoming: true, page_size: 100, ordering: 'event_date' })
   const save = useOpsMutation(ops.saveTask)
   const remove = useOpsMutation(ops.deleteTask)
-  const { register, handleSubmit } = useForm<Values>({
+  const { register, handleSubmit, control } = useForm<Values>({
     defaultValues: {
       title: task?.title ?? '',
       description: task?.description ?? '',
@@ -135,7 +136,11 @@ export function TaskForm({ task, bookingId, onDone }: { task?: Task; bookingId?:
     >
       <TextField label="Task *" required autoFocus className="sm:col-span-2" {...register('title')} />
       <TextAreaField label="Details" rows={2} className="sm:col-span-2" {...register('description')} />
-      <TextField label="Due date" type="date" {...register('due_date')} />
+      <Controller
+        control={control}
+        name="due_date"
+        render={({ field }) => <DateField label="Due date" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+      />
       <SelectField label="Priority" options={TASK_PRIORITIES} {...register('priority')} />
       {isManager && (
         <SelectField

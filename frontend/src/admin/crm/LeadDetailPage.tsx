@@ -12,20 +12,23 @@ import {
   Users,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
-import { fmtDate, fmtDateTime, fromLocalInput, fromNow, toLocalInput, tomorrowAt } from '@/shared/dates'
-import { formatINR, prettyPhone, telLink, waLink } from '@/shared/format'
+import { fmtDateRange, fmtDateTime, fromLocalInput, fromNow, toLocalInput, tomorrowAt } from '@/shared/dates'
+import { formatINR, localDigits, prettyPhone, telLink, waLink } from '@/shared/format'
 import { Button } from '@/shared/ui/Button'
 import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
+import { MultiSelectField } from '@/shared/ui/MultiSelectField'
 
 import { DeleteButton, FormError, QueryState } from '../kit'
 import { crm, useActivities, useCrmMutation, useFollowUps, useLead, useTeam, type ActivityKind, type FollowUp, type Lead, type LeadStatus } from './api'
 import { ConvertDialog, StatusDialog } from './dialogs'
 import { FollowUpRow } from './FollowUpRow'
+import { MobileNumbers } from './MobileNumbers'
 import { LeadReferences } from './references/LeadReferences'
 import { EVENT_TYPES, FOLLOW_UP_KINDS, LEAD_STATUSES, OPEN_STATUSES } from './labels'
 import { LeadStatusPill } from './StatusPills'
@@ -141,11 +144,21 @@ function LeadDetail({ lead }: { lead: Lead }) {
           >
             <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
               <Item label="Event">{lead.event_type_label || '—'}</Item>
-              <Item label="Event date">{fmtDate(lead.event_date)}</Item>
+              <Item label="Event date">{fmtDateRange(lead.event_date, lead.end_date)}</Item>
               <Item label="Venue">{lead.venue || '—'}</Item>
               <Item label="Guests">{lead.guest_count ?? '—'}</Item>
               <Item label="Budget">{formatINR(lead.budget) || '—'}</Item>
-              <Item label="Email">{lead.email ? <a href={`mailto:${lead.email}`} className="text-brand-700 hover:underline">{lead.email}</a> : '—'}</Item>
+              <Item label="Phone">
+                {/* Every number from Edit enquiry, comma-separated; each one starts a call. */}
+                {[lead.phone, ...lead.extra_phones].map((p, i) => (
+                  <span key={p}>
+                    {i > 0 && ', '}
+                    <a href={telLink(p)} className="whitespace-nowrap text-brand-700 tabular-nums hover:underline">
+                      {prettyPhone(p)}
+                    </a>
+                  </span>
+                ))}
+              </Item>
               {(lead.package_name || lead.service_name) && <Item label="Interested in">{lead.package_name ?? lead.service_name}</Item>}
               {lead.source_page && <Item label="Website page">{lead.source_page}</Item>}
             </dl>
@@ -301,8 +314,9 @@ function FollowUpForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
   const { hasRole } = useAuth()
   const { data: team } = useTeam()
   const create = useCrmMutation(crm.createFollowUp)
-  const { register, handleSubmit } = useForm({
-    defaultValues: { due_at: toLocalInput(tomorrowAt(10)), kind: 'CALL', notes: '', assigned_to: String(lead.assigned_to ?? '') },
+  const [defaultDate, defaultTime] = toLocalInput(tomorrowAt(10)).split('T')
+  const { register, handleSubmit, control } = useForm({
+    defaultValues: { due_date: defaultDate, due_time: defaultTime, kind: 'CALL', notes: '', assigned_to: String(lead.assigned_to ?? '') },
   })
 
   return (
@@ -312,7 +326,7 @@ function FollowUpForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
         create.mutate(
           {
             lead: lead.id,
-            due_at: fromLocalInput(v.due_at),
+            due_at: fromLocalInput(`${v.due_date}T${v.due_time}`),
             kind: v.kind as FollowUp['kind'],
             notes: v.notes,
             assigned_to: v.assigned_to ? Number(v.assigned_to) : null,
@@ -321,8 +335,13 @@ function FollowUpForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
         ),
       )}
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField label="When *" type="datetime-local" required {...register('due_at')} />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Controller
+          control={control}
+          name="due_date"
+          render={({ field }) => <DateField label="Date *" required value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+        />
+        <TextField label="Time *" type="time" required {...register('due_time')} />
         <SelectField label="Type" options={FOLLOW_UP_KINDS} {...register('kind')} />
       </div>
       <TextField label="What for?" placeholder="e.g. Share stage design options" {...register('notes')} />
@@ -424,19 +443,27 @@ function Timeline({ lead, canWrite }: { lead: Lead; canWrite: boolean }) {
 
 function EditLeadForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
   const update = useCrmMutation(crm.updateLead)
-  const { register, handleSubmit } = useForm({
+  const { data: team } = useTeam()
+  const [mobiles, setMobiles] = useState(() => [lead.phone, ...lead.extra_phones].map(localDigits))
+  const { register, handleSubmit, control } = useForm({
     defaultValues: {
       name: lead.name,
-      phone: lead.phone,
       email: lead.email,
-      event_type: lead.event_type,
+      event_types: lead.event_types.length ? lead.event_types : lead.event_type ? [lead.event_type] : [],
+      budget: lead.budget ?? '',
       event_date: lead.event_date ?? '',
+      end_date: lead.end_date ?? '',
+      start_time: lead.start_time?.slice(0, 5) ?? '',
+      setup_time: lead.setup_time?.slice(0, 5) ?? '',
       venue: lead.venue,
       guest_count: lead.guest_count ? String(lead.guest_count) : '',
-      budget: lead.budget ?? '',
+      venue_address: lead.venue_address,
+      coordinator: lead.coordinator ? String(lead.coordinator) : '',
       message: lead.message,
     },
   })
+  const [first, ...rest] = mobiles
+
   return (
     <form
       className="grid gap-4 sm:grid-cols-2"
@@ -445,23 +472,52 @@ function EditLeadForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
           {
             id: lead.id,
             ...v,
+            phone: `+91${first}`,
+            // Emptied extra boxes are simply dropped.
+            extra_phones: rest.filter(Boolean).map((d) => `+91${d}`),
             event_date: v.event_date || null,
+            end_date: v.end_date || null,
+            start_time: v.start_time || null,
+            setup_time: v.setup_time || null,
             guest_count: v.guest_count ? Number(v.guest_count) : null,
             budget: v.budget || null,
+            coordinator: v.coordinator ? Number(v.coordinator) : null,
           },
           { onSuccess: onDone },
         ),
       )}
     >
-      <TextField label="Name" required {...register('name')} />
-      <TextField label="Mobile" type="tel" required {...register('phone')} />
-      <TextField label="Email" type="email" {...register('email')} />
-      <SelectField label="Event type" options={[{ value: '', label: '—' }, ...EVENT_TYPES]} {...register('event_type')} />
-      <TextField label="Event date" type="date" {...register('event_date')} />
+      <p className="text-sm font-semibold tracking-wider text-brand-800 uppercase sm:col-span-2">Enquiry</p>
+      <TextField label="Name *" required className="self-start" {...register('name')} />
+      <MobileNumbers values={mobiles} onChange={setMobiles} />
+      <Controller
+        control={control}
+        name="event_types"
+        render={({ field }) => <MultiSelectField label="Event type" options={EVENT_TYPES} value={field.value} onChange={field.onChange} />}
+      />
+      <TextField label="Budget (₹, before GST)" type="number" min={0} {...register('budget')} />
+      <Controller
+        control={control}
+        name="event_date"
+        render={({ field }) => <DateField label="Event date *" required value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+      />
+      <Controller
+        control={control}
+        name="end_date"
+        render={({ field }) => <DateField label="End date" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+      />
+      <TextField label="Event start time" type="time" {...register('start_time')} />
+      <TextField label="Decor team arrives by" type="time" {...register('setup_time')} />
       <TextField label="Venue" {...register('venue')} />
       <TextField label="Guests" type="number" min={1} {...register('guest_count')} />
-      <TextField label="Budget (₹)" type="number" min={0} {...register('budget')} />
-      <TextAreaField label="Message / notes" rows={4} className="sm:col-span-2" {...register('message')} />
+      <TextAreaField label="Venue address" rows={2} className="sm:col-span-2" {...register('venue_address')} />
+      <SelectField
+        label="Event coordinator"
+        options={[{ value: '', label: 'Not yet assigned' }, ...(team ?? []).map((m) => ({ value: String(m.id), label: m.full_name }))]}
+        {...register('coordinator')}
+      />
+      <TextField label="Email" type="email" placeholder="client@email.com" {...register('email')} />
+      <TextAreaField label="Notes" rows={3} className="sm:col-span-2" {...register('message')} />
       <div className="space-y-3 sm:col-span-2">
         <FormError error={update.error} />
         <div className="flex justify-end gap-2">

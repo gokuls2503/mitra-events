@@ -6,6 +6,7 @@ import { useAuth } from '@/shared/auth/useAuth'
 import { fmtDate, todayISO } from '@/shared/dates'
 import { Button } from '@/shared/ui/Button'
 import { CheckboxField, SelectField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
 
 import { useBookings } from '../crm/api'
@@ -157,7 +158,7 @@ export function ExpenseForm({ expense, presetBooking, onDone }: { expense?: Expe
 
   return (
     <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-      <TextField label="Date" type="date" required value={f.date} onChange={set('date')} />
+      <DateField label="Date" required value={f.date} onChange={(value) => set('date')({ target: { value } })} />
       <SelectField
         label="Expense head *"
         required

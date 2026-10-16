@@ -35,6 +35,9 @@ export function directionsLink(address: string) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsQuery(address))}`
 }
 
+/** "+919876543210" → "9876543210": the part typed after a fixed "+91". */
+export const localDigits = (phone: string) => phone.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
+
 /** "+919876543210" → "+91 98765 43210". */
 export function prettyPhone(phone: string) {
   const m = phone.match(/^\+91(\d{5})(\d{5})$/)

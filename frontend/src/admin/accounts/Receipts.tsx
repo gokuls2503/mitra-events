@@ -6,6 +6,7 @@ import { useAuth } from '@/shared/auth/useAuth'
 import { fmtDate, todayISO } from '@/shared/dates'
 import { Button } from '@/shared/ui/Button'
 import { SelectField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
 
 import type { Client } from '../crm/api'
@@ -271,7 +272,7 @@ export function ReceiptForm({
             if (!presetInvoice) setAmounts(autoAllocate(openInvoices, Number(e.target.value) || 0))
           }}
         />
-        <TextField label="Date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+        <DateField label="Date" required value={date} onChange={setDate} />
         <SelectField label="Mode" options={RECEIPT_MODES} value={mode} onChange={(e) => { setMode(e.target.value as ReceiptMode); setDepositTo('') }} />
         <SelectField
           label="Received into"

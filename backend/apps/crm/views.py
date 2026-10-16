@@ -58,10 +58,15 @@ class LeadFilter(filters.FilterSet):
     unassigned = filters.BooleanFilter(field_name="assigned_to", lookup_expr="isnull")
     created_from = filters.DateFilter(field_name="created_at", lookup_expr="date__gte")
     created_to = filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
+    # Matches a lead if any of its event types is the one asked for.
+    event_type = filters.CharFilter(method="filter_event_type")
 
     class Meta:
         model = Lead
-        fields = ["status", "source", "event_type", "assigned_to", "client"]
+        fields = ["status", "source", "assigned_to", "client"]
+
+    def filter_event_type(self, qs, name, value):
+        return qs.filter(Q(event_types__contains=[value]) | Q(event_type=value)) if value else qs
 
     def filter_open(self, qs, name, value):
         return qs.filter(status__in=Lead.OPEN_STATUSES) if value else qs.exclude(status__in=Lead.OPEN_STATUSES)
@@ -315,9 +320,15 @@ class BookingFilter(filters.FilterSet):
     upcoming = filters.BooleanFilter(method="filter_upcoming")
     mine = filters.BooleanFilter(method="filter_mine")
 
+    # Matches a booking if any of its event types is the one asked for.
+    event_type = filters.CharFilter(method="filter_event_type")
+
     class Meta:
         model = Booking
-        fields = ["status", "event_type", "client", "coordinator"]
+        fields = ["status", "client", "coordinator"]
+
+    def filter_event_type(self, qs, name, value):
+        return qs.filter(Q(event_types__contains=[value]) | Q(event_type=value)) if value else qs
 
     # Multi-day events overlap a range if they end on/after its start and start on/before its end.
     def filter_from(self, qs, name, value):

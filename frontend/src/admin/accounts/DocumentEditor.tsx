@@ -1,11 +1,12 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { useFieldArray, useForm, useWatch } from 'react-hook-form'
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 
 import { todayISO } from '@/shared/dates'
 import { Button } from '@/shared/ui/Button'
-import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
+import { SelectField, TextAreaField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 
 import { useBookings, type Client } from '../crm/api'
 import { FormError } from '../kit'
@@ -117,12 +118,25 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
           onChange={(e) => setValue('booking', e.target.value, { shouldDirty: true })}
         />
         <SelectField label="Place of supply" options={stateOptions.length ? stateOptions : [{ value: '33', label: '33 - Tamil Nadu' }]} hint={intra ? 'Same state: CGST + SGST' : 'Other state: IGST'} {...register('place_of_supply')} />
-        <TextField label={kind === 'invoice' ? 'Invoice date' : 'Quotation date'} type="date" required {...register('date')} />
-        <TextField
-          label={kind === 'invoice' ? 'Due date' : 'Valid until'}
-          type="date"
-          hint={doc ? undefined : `Leave blank for ${kind === 'invoice' ? settings?.invoice_due_days ?? 7 : settings?.quotation_valid_days ?? 15} days`}
-          {...register('second_date')}
+        <Controller
+          control={control}
+          name="date"
+          render={({ field }) => (
+            <DateField label={kind === 'invoice' ? 'Invoice date' : 'Quotation date'} required value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+          )}
+        />
+        <Controller
+          control={control}
+          name="second_date"
+          render={({ field }) => (
+            <DateField
+              label={kind === 'invoice' ? 'Due date' : 'Valid until'}
+              hint={doc ? undefined : `Leave blank for ${kind === 'invoice' ? settings?.invoice_due_days ?? 7 : settings?.quotation_valid_days ?? 15} days`}
+              value={field.value}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+            />
+          )}
         />
       </section>
 

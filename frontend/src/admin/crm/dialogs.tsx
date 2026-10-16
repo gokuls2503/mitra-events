@@ -1,15 +1,18 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
 import { Button } from '@/shared/ui/Button'
+import { DateField } from '@/shared/ui/DateField'
 import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
 import { Modal } from '@/shared/ui/Modal'
+import { MultiSelectField } from '@/shared/ui/MultiSelectField'
 
 import { FormError } from '../kit'
 import { crm, useCrmMutation, useTeam, type Lead, type LeadStatus } from './api'
 import { EVENT_TYPES, LEAD_SOURCES, LEAD_STATUSES } from './labels'
+import { MobileNumbers } from './MobileNumbers'
 
 // --- Status change -------------------------------------------------------------
 
@@ -58,10 +61,9 @@ export function StatusDialog({ lead, target, onClose }: { lead: Lead; target: Le
 
 interface NewLeadValues {
   name: string
-  phone: string
   email: string
   source: string
-  event_type: string
+  event_types: Lead['event_types']
   event_date: string
   venue: string
   guest_count: string
@@ -83,15 +85,18 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()
   const { data: team } = useTeam()
   const mutation = useCrmMutation(crm.createLead)
-  const { register, handleSubmit } = useForm<NewLeadValues>({
-    defaultValues: { source: 'PHONE', assigned_to: hasRole('STAFF') ? String(user?.id) : '' },
+  const [mobiles, setMobiles] = useState([''])
+  const { register, handleSubmit, control } = useForm<NewLeadValues>({
+    defaultValues: { source: 'PHONE', event_types: [], assigned_to: hasRole('STAFF') ? String(user?.id) : '' },
   })
 
   const submit = (v: NewLeadValues) =>
     mutation.mutate(
       {
         ...v,
-        event_type: v.event_type as Lead['event_type'],
+        phone: `+91${mobiles[0]}`,
+        // Emptied extra boxes are simply dropped.
+        extra_phones: mobiles.slice(1).filter(Boolean).map((d) => `+91${d}`),
         source: v.source as Lead['source'],
         event_date: v.event_date || null,
         guest_count: v.guest_count ? Number(v.guest_count) : null,
@@ -104,11 +109,19 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
   return (
     <form onSubmit={handleSubmit(submit)} className="grid gap-4 sm:grid-cols-2">
       <TextField label="Name *" required autoFocus {...register('name')} />
-      <TextField label="Mobile *" type="tel" required placeholder="98765 43210" {...register('phone')} />
+      <MobileNumbers values={mobiles} onChange={setMobiles} />
       <TextField label="Email" type="email" {...register('email')} />
       <SelectField label="How did they reach us?" options={LEAD_SOURCES} {...register('source')} />
-      <SelectField label="Event type" options={[{ value: '', label: '—' }, ...EVENT_TYPES]} {...register('event_type')} />
-      <TextField label="Event date" type="date" {...register('event_date')} />
+      <Controller
+        control={control}
+        name="event_types"
+        render={({ field }) => <MultiSelectField label="Event type" options={EVENT_TYPES} value={field.value} onChange={field.onChange} />}
+      />
+      <Controller
+        control={control}
+        name="event_date"
+        render={({ field }) => <DateField label="Event date" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+      />
       <TextField label="Venue / area" {...register('venue')} />
       <div className="grid grid-cols-2 gap-3">
         <TextField label="Guests" type="number" min={1} {...register('guest_count')} />
@@ -141,7 +154,7 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
 
 interface ConvertValues {
   title: string
-  event_type: string
+  event_types: Lead['event_types']
   event_date: string
   end_date: string
   start_time: string
@@ -170,15 +183,22 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const navigate = useNavigate()
   const { data: team } = useTeam()
   const mutation = useCrmMutation(crm.convert)
-  const { register, handleSubmit } = useForm<ConvertValues>({
+  // Everything filled in on Edit enquiry carries over, so nothing is typed twice.
+  const coordinator = lead.coordinator ?? lead.assigned_to
+  const { register, handleSubmit, control } = useForm<ConvertValues>({
     defaultValues: {
       title: `${lead.name} — ${lead.event_type_label || 'Event'}`,
-      event_type: lead.event_type || 'OTHER',
+      event_types: lead.event_types.length ? lead.event_types : lead.event_type ? [lead.event_type] : [],
       event_date: lead.event_date ?? '',
+      end_date: lead.end_date ?? '',
+      start_time: lead.start_time?.slice(0, 5) ?? '',
+      setup_time: lead.setup_time?.slice(0, 5) ?? '',
       venue: lead.venue,
+      venue_address: lead.venue_address,
       guest_count: lead.guest_count ? String(lead.guest_count) : '',
       agreed_amount: lead.budget ?? '',
-      coordinator: lead.assigned_to ? String(lead.assigned_to) : '',
+      coordinator: coordinator ? String(coordinator) : '',
+      notes: lead.message,
       client_name: lead.name,
       client_email: lead.email,
     },
@@ -205,10 +225,22 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       <fieldset className="grid gap-4 sm:grid-cols-2">
         <legend className="mb-2 text-sm font-semibold text-stone-800">Event</legend>
         <TextField label="Booking title *" required className="sm:col-span-2" {...register('title')} />
-        <SelectField label="Event type" options={EVENT_TYPES} {...register('event_type')} />
+        <Controller
+          control={control}
+          name="event_types"
+          render={({ field }) => <MultiSelectField label="Event type *" options={EVENT_TYPES} value={field.value} onChange={field.onChange} />}
+        />
         <TextField label="Agreed amount (₹, before GST)" type="number" min={0} {...register('agreed_amount')} />
-        <TextField label="Event date *" type="date" required {...register('event_date')} />
-        <TextField label="End date (multi-day events)" type="date" {...register('end_date')} />
+        <Controller
+          control={control}
+          name="event_date"
+          render={({ field }) => <DateField label="Event date *" required value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+        />
+        <Controller
+          control={control}
+          name="end_date"
+          render={({ field }) => <DateField label="End date (multi-day events)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+        />
         <TextField label="Event start time" type="time" {...register('start_time')} />
         <TextField label="Decor team arrives by" type="time" {...register('setup_time')} />
         <TextField label="Venue *" required {...register('venue')} />

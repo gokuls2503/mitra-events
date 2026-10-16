@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 
 import { fmtDate, todayISO } from '@/shared/dates'
 import { prettyPhone } from '@/shared/format'
-import { TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Spinner } from '@/shared/ui/Spinner'
 
 import { QueryState } from '../kit'
@@ -59,11 +59,11 @@ export function ReportsPage() {
       <div className="mb-4 flex flex-wrap items-end gap-2">
         {meta.range ? (
           <>
-            <TextField label="From" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            <TextField label="To" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <DateField label="From" className="w-full sm:w-44" value={from} max={to} onChange={setFrom} />
+            <DateField label="To" className="w-full sm:w-44" value={to} min={from} onChange={setTo} />
           </>
         ) : (
-          <TextField label="As on" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
+          <DateField label="As on" className="w-full sm:w-44" value={asOf} onChange={setAsOf} />
         )}
         {isFetching && <Spinner className="mb-2 size-4 text-stone-400" />}
         <div className="ml-auto">

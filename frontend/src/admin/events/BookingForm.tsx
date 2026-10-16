@@ -1,8 +1,10 @@
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/shared/ui/Button'
 import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
+import { MultiSelectField } from '@/shared/ui/MultiSelectField'
 
 import { crm, useCrmMutation, useTeam, type Booking } from '../crm/api'
 import { BOOKING_STATUSES, EVENT_TYPES } from '../crm/labels'
@@ -10,7 +12,7 @@ import { FormError } from '../kit'
 
 interface Values {
   title: string
-  event_type: string
+  event_types: Booking['event_types']
   status: string
   event_date: string
   end_date: string
@@ -29,7 +31,7 @@ export function BookingForm({ booking, clientId, onDone }: { booking?: Booking; 
   const navigate = useNavigate()
   const { data: team } = useTeam()
   const save = useCrmMutation(crm.saveBooking)
-  const { register, handleSubmit } = useForm<Values>({
+  const { register, handleSubmit, control } = useForm<Values>({
     defaultValues: booking
       ? {
           ...booking,
@@ -39,8 +41,9 @@ export function BookingForm({ booking, clientId, onDone }: { booking?: Booking; 
           guest_count: booking.guest_count ? String(booking.guest_count) : '',
           agreed_amount: booking.agreed_amount ?? '',
           coordinator: booking.coordinator ? String(booking.coordinator) : '',
+          event_types: booking.event_types.length ? booking.event_types : [booking.event_type],
         }
-      : { event_type: 'WEDDING', status: 'CONFIRMED' },
+      : { event_types: [], status: 'CONFIRMED' },
   })
 
   const submit = (v: Values) =>
@@ -49,7 +52,6 @@ export function BookingForm({ booking, clientId, onDone }: { booking?: Booking; 
         id: booking?.id,
         ...(clientId ? { client: clientId } : {}),
         ...v,
-        event_type: v.event_type as Booking['event_type'],
         status: v.status as Booking['status'],
         end_date: v.end_date || null,
         start_time: v.start_time || null,
@@ -64,10 +66,22 @@ export function BookingForm({ booking, clientId, onDone }: { booking?: Booking; 
   return (
     <form onSubmit={handleSubmit(submit)} className="grid gap-4 sm:grid-cols-2">
       <TextField label="Title *" required className="sm:col-span-2" {...register('title')} />
-      <SelectField label="Event type" options={EVENT_TYPES} {...register('event_type')} />
+      <Controller
+        control={control}
+        name="event_types"
+        render={({ field }) => <MultiSelectField label="Event type *" options={EVENT_TYPES} value={field.value} onChange={field.onChange} />}
+      />
       {booking ? <SelectField label="Status" options={BOOKING_STATUSES} {...register('status')} /> : <span className="hidden sm:block" />}
-      <TextField label="Event date *" type="date" required {...register('event_date')} />
-      <TextField label="End date (multi-day)" type="date" {...register('end_date')} />
+      <Controller
+        control={control}
+        name="event_date"
+        render={({ field }) => <DateField label="Event date *" required value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+      />
+      <Controller
+        control={control}
+        name="end_date"
+        render={({ field }) => <DateField label="End date (multi-day)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+      />
       <TextField label="Event start time" type="time" {...register('start_time')} />
       <TextField label="Decor team arrives by" type="time" {...register('setup_time')} />
       <TextField label="Venue *" required {...register('venue')} />

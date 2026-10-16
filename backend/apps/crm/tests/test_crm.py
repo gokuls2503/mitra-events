@@ -323,3 +323,119 @@ class TestBookingsAndClients:
         team["staff2"].save()
         names = [u["full_name"] for u in api(team["staff"]).get("/api/v1/team/").data]
         assert "Accountant" not in names and "Staff2" not in names and "Staff" in names
+
+
+# --- Edit enquiry: planning details ------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestEnquiryDetails:
+    def edit(self, team, l, **body):
+        return api(team["manager"]).patch(f"/api/v1/crm/leads/{l.pk}/", body, format="json")
+
+    def test_saves_planning_details_and_extra_numbers(self, team):
+        l = lead()
+        res = self.edit(
+            team,
+            l,
+            phone="98765 43210",
+            extra_phones=["9445742696", "+91 98946 06292"],
+            event_date=NEXT_MONTH.isoformat(),
+            end_date=(NEXT_MONTH + datetime.timedelta(days=2)).isoformat(),
+            start_time="18:30",
+            setup_time="14:00",
+            venue_address="KSP Complex, Sundrapuram",
+            coordinator=team["staff"].pk,
+        )
+        assert res.status_code == 200, res.data
+        assert res.data["extra_phones"] == ["+919445742696", "+919894606292"]
+        assert res.data["start_time"] == "18:30:00" and res.data["coordinator"] == team["staff"].pk
+        assert res.data["venue_address"] == "KSP Complex, Sundrapuram"
+
+    def test_at_most_two_extra_numbers(self, team):
+        res = self.edit(team, lead(), extra_phones=["9445742696", "9894606292", "9000000003"])
+        assert res.status_code == 400 and "extra_phones" in res.data
+
+    @pytest.mark.parametrize("extra", [["12345"], ["9876543210"], ["9445742696", "9445742696"]])
+    def test_rejects_invalid_or_repeated_numbers(self, team, extra):
+        assert self.edit(team, lead(), extra_phones=extra).status_code == 400
+
+    def test_clearing_extra_numbers(self, team):
+        l = lead()
+        self.edit(team, l, extra_phones=["9445742696"])
+        assert self.edit(team, l, extra_phones=[]).data["extra_phones"] == []
+
+    def test_end_date_not_before_event_date(self, team):
+        res = self.edit(team, lead(), event_date=NEXT_MONTH.isoformat(), end_date=TOMORROW.isoformat())
+        assert res.status_code == 400 and "end_date" in res.data
+
+    def test_coordinator_must_be_on_the_team(self, team):
+        assert self.edit(team, lead(), coordinator=team["accountant"].pk).status_code == 400
+
+
+@pytest.mark.django_db
+class TestMultipleEventTypes:
+    def test_kept_in_the_order_picked(self, team):
+        l = lead(event_type="")
+        res = api(team["manager"]).patch(
+            f"/api/v1/crm/leads/{l.pk}/", {"event_types": ["ENGAGEMENT", "WEDDING", "BIRTHDAY"]}, format="json"
+        )
+        assert res.status_code == 200, res.data
+        assert res.data["event_types"] == ["ENGAGEMENT", "WEDDING", "BIRTHDAY"]
+        assert res.data["event_type"] == "ENGAGEMENT"  # the first one drives filters and booking conversion
+        assert res.data["event_type_label"] == "Engagement, Wedding, Birthday"
+
+    def test_clearing_and_duplicates(self, team):
+        l = lead()
+        c = api(team["manager"])
+        assert c.patch(f"/api/v1/crm/leads/{l.pk}/", {"event_types": ["WEDDING", "WEDDING"]}, format="json").status_code == 400
+        res = c.patch(f"/api/v1/crm/leads/{l.pk}/", {"event_types": []}, format="json")
+        assert res.data["event_type"] == "" and res.data["event_type_label"] == ""
+
+    def test_single_type_paths_still_fill_the_list(self, team):
+        # Website enquiries and the New lead form set just one type.
+        assert lead(event_type="RECEPTION").event_types == ["RECEPTION"]
+
+    def test_filter_matches_any_picked_type(self, team):
+        l = lead()
+        api(team["manager"]).patch(f"/api/v1/crm/leads/{l.pk}/", {"event_types": ["ENGAGEMENT", "BIRTHDAY"]}, format="json")
+        ids = [r["id"] for r in api(team["manager"]).get("/api/v1/crm/leads/?event_type=BIRTHDAY").data["results"]]
+        assert l.pk in ids
+
+
+@pytest.mark.django_db
+class TestBookingEventTypes:
+    def test_convert_keeps_all_types_in_order(self, team):
+        res = api(team["manager"]).post(
+            f"/api/v1/crm/leads/{lead().pk}/convert/",
+            {k: v for k, v in booking_payload(event_types=["RECEPTION", "WEDDING"]).items() if k != "event_type"},
+            format="json",
+        )
+        assert res.status_code == 201, res.data
+        assert res.data["event_types"] == ["RECEPTION", "WEDDING"] and res.data["event_type"] == "RECEPTION"
+        assert res.data["event_type_label"] == "Reception, Wedding"
+
+    def test_convert_needs_at_least_one_type(self, team):
+        body = {k: v for k, v in booking_payload(event_types=[]).items() if k != "event_type"}
+        res = api(team["manager"]).post(f"/api/v1/crm/leads/{lead().pk}/convert/", body, format="json")
+        assert res.status_code == 400 and "event_types" in res.data
+
+    def test_edit_booking_types_and_filter(self, team):
+        c = api(team["manager"])
+        client = Client.objects.create(name="Kavya", phone="+919876543210")
+        b = c.post("/api/v1/crm/bookings/", booking_payload(client=client.pk), format="json").data
+        assert b["event_types"] == ["WEDDING"]  # single-type requests still fill the list
+        res = c.patch(f"/api/v1/crm/bookings/{b['id']}/", {"event_types": ["ENGAGEMENT", "BIRTHDAY"]}, format="json")
+        assert res.data["event_type"] == "ENGAGEMENT" and res.data["event_type_label"] == "Engagement, Birthday"
+        assert c.patch(f"/api/v1/crm/bookings/{b['id']}/", {"event_types": []}, format="json").status_code == 400
+        ids = [r["id"] for r in c.get("/api/v1/crm/bookings/?event_type=BIRTHDAY").data["results"]]
+        assert b["id"] in ids
+
+
+@pytest.mark.django_db
+def test_convert_saves_times(team):
+    res = api(team["manager"]).post(
+        f"/api/v1/crm/leads/{lead().pk}/convert/", booking_payload(start_time="18:30", setup_time="14:00"), format="json"
+    )
+    assert res.status_code == 201, res.data
+    assert (res.data["start_time"], res.data["setup_time"]) == ("18:30:00", "14:00:00")

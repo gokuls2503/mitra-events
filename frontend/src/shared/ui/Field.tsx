@@ -1,7 +1,8 @@
 import clsx from 'clsx'
 import { forwardRef, useId, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
-const CONTROL =
+/** Shared input look (also used by DateField). */
+export const CONTROL =
   'block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm shadow-xs ' +
   'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-stone-100'
 

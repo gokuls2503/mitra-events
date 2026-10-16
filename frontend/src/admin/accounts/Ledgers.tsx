@@ -6,6 +6,7 @@ import { useAuth } from '@/shared/auth/useAuth'
 import { fmtDate, todayISO } from '@/shared/dates'
 import { Button } from '@/shared/ui/Button'
 import { CheckboxField, SelectField, TextField } from '@/shared/ui/Field'
+import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
 import { Spinner } from '@/shared/ui/Spinner'
 
@@ -180,8 +181,8 @@ export function LedgerStatementPage() {
           <p className="text-sm text-stone-600">{data?.ledger.group}</p>
         </div>
         <div className="flex flex-wrap items-end gap-2 sm:ml-auto">
-          <TextField label="From" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <TextField label="To" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <DateField label="From" className="w-full sm:w-44" value={from} max={to || undefined} onChange={setFrom} />
+          <DateField label="To" className="w-full sm:w-44" value={to} min={from || undefined} onChange={setTo} />
           <FileButton kind="xlsx" url={`/accounts/ledgers/${id}/statement/`} params={{ from, to, export: 'xlsx' }} label="Excel" />
           {isFetching && <Spinner className="mb-2 size-4 text-stone-400" />}
         </div>

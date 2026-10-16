@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
+import { DateField } from '@/shared/ui/DateField'
 import { useAuth } from '@/shared/auth/useAuth'
 import { fmtDate, toISODate } from '@/shared/dates'
 import { Spinner } from '@/shared/ui/Spinner'
@@ -87,14 +88,8 @@ export default function AnalyticsPage() {
             </button>
           ))}
         </div>
-        <label className="text-xs text-stone-600">
-          From
-          <input type="date" value={from} max={to} onChange={(e) => { setPreset('custom'); setRange([e.target.value, to]) }} className="mt-0.5 block rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm" />
-        </label>
-        <label className="text-xs text-stone-600">
-          To
-          <input type="date" value={to} min={from} onChange={(e) => { setPreset('custom'); setRange([from, e.target.value]) }} className="mt-0.5 block rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm" />
-        </label>
+        <DateField compact label="From" className="w-40" value={from} max={to} onChange={(v) => { if (v) { setPreset('custom'); setRange([v, to]) } }} />
+        <DateField compact label="To" className="w-40" value={to} min={from} onChange={(v) => { if (v) { setPreset('custom'); setRange([from, v]) } }} />
         <label className="text-xs text-stone-600">
           Compare with
           <select value={compare} onChange={(e) => setCompare(e.target.value as Compare)} className="mt-0.5 block rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-sm">

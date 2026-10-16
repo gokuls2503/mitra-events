@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import Role, User
 from apps.accounts.serializers import UserMiniSerializer
+from apps.core.choices import EventType
 from apps.core.fields import IndianPhoneField
 from apps.website.models import Package
 
@@ -49,11 +50,40 @@ class ClientSerializer(serializers.ModelSerializer):
         return value
 
 
-class LeadSerializer(serializers.ModelSerializer):
+class EventTypesFieldsMixin:
+    """`event_types` (ordered picks) decides `event_type` (the first); setting only
+    `event_type` still works. `event_type_label` lists them all: "Engagement, Wedding"."""
+
+    require_event_type = False
+
+    def validate_event_types(self, value):
+        if len(set(value)) != len(value):
+            raise serializers.ValidationError("Each event type can only be picked once.")
+        if self.require_event_type and not value:
+            raise serializers.ValidationError("Pick at least one event type.")
+        return value
+
+    def sync_event_types(self, attrs):
+        if "event_types" in attrs:
+            attrs["event_type"] = attrs["event_types"][0] if attrs["event_types"] else ""
+        elif "event_type" in attrs:
+            attrs["event_types"] = [attrs["event_type"]] if attrs["event_type"] else []
+        return attrs
+
+
+def event_types_field(**kwargs):
+    return serializers.ListField(child=serializers.ChoiceField(choices=EventType.choices), required=False, **kwargs)
+
+
+class LeadSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
     phone = IndianPhoneField()
+    extra_phones = serializers.ListField(child=IndianPhoneField(), max_length=2, required=False)
+    coordinator = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     source_label = serializers.CharField(source="get_source_display", read_only=True)
-    event_type_label = serializers.CharField(source="get_event_type_display", read_only=True)
+    event_types = event_types_field()
+    # All picked event types, joined in order ("Engagement, Wedding"), so every list and card shows them.
+    event_type_label = serializers.CharField(source="event_types_label", read_only=True)
     assigned_to_detail = UserMiniSerializer(source="assigned_to", read_only=True)
     client_name = serializers.CharField(source="client.name", read_only=True, default=None)
     package_name = serializers.CharField(source="package.name", read_only=True, default=None)
@@ -67,13 +97,20 @@ class LeadSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "phone",
+            "extra_phones",
             "email",
             "client",
             "client_name",
             "event_type",
+            "event_types",
             "event_type_label",
             "event_date",
+            "end_date",
+            "start_time",
+            "setup_time",
             "venue",
+            "venue_address",
+            "coordinator",
             "guest_count",
             "budget",
             "message",
@@ -107,6 +144,18 @@ class LeadSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def validate(self, attrs):
+        self.sync_event_types(attrs)
+        phone = attrs.get("phone", getattr(self.instance, "phone", None))
+        extra = attrs.get("extra_phones")
+        if extra is not None and len({phone, *extra}) != len(extra) + 1:
+            raise serializers.ValidationError({"extra_phones": "Each mobile number should be different."})
+        start = attrs.get("event_date", getattr(self.instance, "event_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        if start and end and end < start:
+            raise serializers.ValidationError({"end_date": "End date can't be before the event date."})
+        return attrs
 
     def get_booking(self, lead):
         booking = getattr(lead, "booking", None)
@@ -206,9 +255,11 @@ class CompleteFollowUpSerializer(serializers.Serializer):
     outcome = serializers.CharField(required=False, allow_blank=True, max_length=300)
 
 
-class BookingSerializer(serializers.ModelSerializer):
+class BookingSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
+    require_event_type = True
     status_label = serializers.CharField(source="get_status_display", read_only=True)
-    event_type_label = serializers.CharField(source="get_event_type_display", read_only=True)
+    event_types = event_types_field()
+    event_type_label = serializers.CharField(source="event_types_label", read_only=True)
     client_name = serializers.CharField(source="client.name", read_only=True)
     client_phone = serializers.CharField(source="client.phone", read_only=True)
     coordinator = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
@@ -228,6 +279,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "lead_id",
             "title",
             "event_type",
+            "event_types",
             "event_type_label",
             "package",
             "package_name",
@@ -248,8 +300,12 @@ class BookingSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["number", "created_at", "updated_at"]
+        extra_kwargs = {"event_type": {"required": False}}
 
     def validate(self, attrs):
+        self.sync_event_types(attrs)
+        if not self.instance and not attrs.get("event_type"):
+            raise serializers.ValidationError({"event_types": "Pick at least one event type."})
         start = attrs.get("event_date", getattr(self.instance, "event_date", None))
         end = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start and end and end < start:
@@ -259,11 +315,13 @@ class BookingSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ConvertLeadSerializer(serializers.Serializer):
+class ConvertLeadSerializer(EventTypesFieldsMixin, serializers.Serializer):
     """Booking details + optional client details captured while converting."""
 
+    require_event_type = True
     title = serializers.CharField(max_length=160)
-    event_type = serializers.ChoiceField(choices=Booking._meta.get_field("event_type").choices)
+    event_type = serializers.ChoiceField(choices=Booking._meta.get_field("event_type").choices, required=False)
+    event_types = event_types_field()
     package = serializers.PrimaryKeyRelatedField(queryset=Package.objects.all(), required=False, allow_null=True)
     event_date = serializers.DateField()
     end_date = serializers.DateField(required=False, allow_null=True)
@@ -282,6 +340,9 @@ class ConvertLeadSerializer(serializers.Serializer):
     client_gstin = serializers.CharField(required=False, allow_blank=True, max_length=15)
 
     def validate(self, attrs):
+        self.sync_event_types(attrs)
+        if not attrs.get("event_type"):
+            raise serializers.ValidationError({"event_types": "Pick at least one event type."})
         if attrs.get("end_date") and attrs["end_date"] < attrs["event_date"]:
             raise serializers.ValidationError({"end_date": "End date can't be before the event date."})
         return attrs

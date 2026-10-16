@@ -7,6 +7,43 @@ const timeFmt = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-d
 const weekdayFmt = new Intl.DateTimeFormat('en-IN', { weekday: 'short' })
 const rtf = new Intl.RelativeTimeFormat('en-IN', { numeric: 'auto' })
 
+/** Month names for date fields and calendars. The admin never shows a month as a number. */
+export const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+
+/** "2026-12-01" → "01/DEC/2026"; "" for no date. */
+export function fmtDMY(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return `${d}/${MONTHS[Number(m) - 1]}/${y}`
+}
+
+/** "2026-12-01" → "1 DEC 2026". */
+export function fmtDayMonYear(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return `${Number(d)} ${MONTHS[Number(m) - 1]} ${y}`
+}
+
+/** "1 DEC 2026 - 23 DEC 2026" for a multi-day event, "1 DEC 2026" for a single day, "—" for none. */
+export function fmtDateRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start) return '—'
+  return end && end !== start ? `${fmtDayMonYear(start)} - ${fmtDayMonYear(end)}` : fmtDayMonYear(start)
+}
+
+/**
+ * What someone typed into a date field → "YYYY-MM-DD", or null if it isn't a real date.
+ * Accepts "01/DEC/2026", "1/dec/2026", "1 Dec 2026", "01-december-2026". The month must be a name.
+ */
+export function parseDMY(text: string): string | null {
+  const m = text.trim().match(/^(\d{1,2})[\s/.-]+([a-z]{3,9})[\s/.,-]+(\d{4})$/i)
+  if (!m) return null
+  const month = MONTHS.indexOf(m[2].slice(0, 3).toUpperCase())
+  const day = Number(m[1])
+  const year = Number(m[3])
+  const d = new Date(year, month, day)
+  if (month < 0 || d.getMonth() !== month || d.getDate() !== day) return null
+  return toISODate(d)
+}
+
 /** "2026-10-06" → local Date at midnight (not UTC, which would shift the day). */
 export function parseDate(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)

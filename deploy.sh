@@ -2,7 +2,7 @@
 # Mitra Events — one-shot deploy for a fresh Ubuntu 24.04 VPS (run as root).
 # Safe to re-run: the first run installs everything, later runs pull + rebuild + restart.
 #
-
+#   ssh root@187.126.124.241
 #   bash deploy.sh
 #
 set -euo pipefail
