@@ -494,3 +494,56 @@ def test_expense_attachment_upload(setup, tmp_path, settings):
     assert res.status_code == 201, res.data
     assert res.data["attachment"].startswith("/media/bills/")
     assert Expense.objects.get().total == D("1200.00")
+
+
+# --- Quotation images ----------------------------------------------------------------------
+
+
+def _jpeg(name="stage.jpg"):
+    import io as _io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image as _Image
+
+    buf = _io.BytesIO()
+    _Image.new("RGB", (2400, 1350), "goldenrod").save(buf, "JPEG")
+    return SimpleUploadedFile(name, buf.getvalue(), content_type="image/jpeg")
+
+
+@pytest.mark.django_db
+class TestQuotationImages:
+    @pytest.fixture(autouse=True)
+    def media(self, settings, tmp_path):
+        settings.MEDIA_ROOT = tmp_path
+
+    def test_upload_two_then_limit_then_delete(self, setup):
+        q = services.save_quotation(client=setup["client"], items=[item()])
+        c = api(setup["manager"])
+        url = f"/api/v1/accounts/quotations/{q.pk}/images/"
+        first = c.post(url, {"image": _jpeg()}, format="multipart")
+        assert first.status_code == 201, first.data
+        assert c.post(url, {"image": _jpeg()}, format="multipart").status_code == 201
+        third = c.post(url, {"image": _jpeg()}, format="multipart")
+        assert third.status_code == 400 and "at most 2" in str(third.data)
+        assert [i["id"] for i in c.get(f"/api/v1/accounts/quotations/{q.pk}/").data["images"]][0] == first.data["id"]
+        assert c.delete(f"{url}{first.data['id']}/").status_code == 204
+        assert len(c.get(f"/api/v1/accounts/quotations/{q.pk}/").data["images"]) == 1
+
+    def test_rejects_non_images(self, setup):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        q = services.save_quotation(client=setup["client"], items=[item()])
+        bad = SimpleUploadedFile("x.jpg", b"not an image", content_type="image/jpeg")
+        res = api(setup["manager"]).post(f"/api/v1/accounts/quotations/{q.pk}/images/", {"image": bad}, format="multipart")
+        assert res.status_code == 400
+
+    def test_pdf_with_two_images(self, setup):
+        from apps.accounting import exports
+
+        q = services.save_quotation(client=setup["client"], items=[item()])
+        c = api(setup["manager"])
+        for _ in range(2):
+            c.post(f"/api/v1/accounts/quotations/{q.pk}/images/", {"image": _jpeg()}, format="multipart")
+        assert len(exports.document_photos(q, "quotation", None)) == 2
+        res = c.get(f"/api/v1/accounts/quotations/{q.pk}/pdf/")
+        assert res.status_code == 200 and res.content[:4] == b"%PDF"

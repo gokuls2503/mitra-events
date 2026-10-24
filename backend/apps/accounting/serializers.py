@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.core.fields import RelativeImageField
 from apps.crm.models import Booking, Client
 from apps.operations.models import Vendor
 
@@ -15,6 +16,7 @@ from .models import (
     JournalLine,
     Ledger,
     Quotation,
+    QuotationImage,
     QuotationItem,
     Receipt,
     ReceiptAllocation,
@@ -174,13 +176,23 @@ class SalesDocumentSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class QuotationImageSerializer(serializers.ModelSerializer):
+    image = RelativeImageField(read_only=True)
+
+    class Meta:
+        model = QuotationImage
+        fields = ["id", "image"]
+
+
 class QuotationSerializer(SalesDocumentSerializer):
+    images = QuotationImageSerializer(many=True, read_only=True)
+
     class Meta:
         model = Quotation
         fields = [
             "id", "number", "client", "client_name", "client_gstin", "booking", "booking_title", "booking_number",
             "lead", "date", "valid_until", "status", "status_label", "place_of_supply", "place_of_supply_name",
-            "notes", "terms", "items", *TOTAL_FIELDS, "created_at",
+            "notes", "terms", "items", "images", *TOTAL_FIELDS, "created_at",
         ]
         read_only_fields = ["number", "status", *TOTAL_FIELDS, "created_at"]
         extra_kwargs = {"date": {"required": False}, "terms": {"required": False}}

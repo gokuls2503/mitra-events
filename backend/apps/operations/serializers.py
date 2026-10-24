@@ -44,7 +44,7 @@ class VendorSerializer(serializers.ModelSerializer):
 class BookingMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
-        fields = ["id", "number", "title", "event_date", "venue"]
+        fields = ["id", "number", "title", "event_date", "end_date", "venue"]
 
 
 class AssignmentSerializer(serializers.ModelSerializer):

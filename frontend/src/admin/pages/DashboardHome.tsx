@@ -170,20 +170,51 @@ export default function DashboardHome() {
                 </Panel>
               )}
 
-              {data.attention && data.attention.events_without_coordinator.length > 0 && (
+              {data.attention && (data.attention.events_without_coordinator.length > 0 || data.attention.unassigned_tasks_count > 0) && (
                 <Panel title="Needs attention" icon={<AlertTriangle className="size-4 text-amber-600" />}>
-                  <p className="mb-2 flex items-center gap-1.5 text-xs text-stone-600">
-                    <UserX className="size-3.5" /> Events in the next 30 days with no coordinator
-                  </p>
-                  <ul className="space-y-1 text-sm">
-                    {data.attention.events_without_coordinator.map((e) => (
-                      <li key={e.id}>
-                        <Link to={`/admin/events/${e.id}`} className="text-brand-700 hover:underline">
-                          {fmtShortDate(e.event_date)} · {e.title}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
+                  {data.attention.events_without_coordinator.length > 0 && (
+                    <>
+                      <p className="mb-2 flex items-center gap-1.5 text-xs text-stone-600">
+                        <UserX className="size-3.5" /> Events in the next 30 days with no coordinator
+                      </p>
+                      <ul className="space-y-1 text-sm">
+                        {data.attention.events_without_coordinator.map((e) => (
+                          <li key={e.id}>
+                            <Link to={`/admin/events/${e.id}`} className="text-brand-700 hover:underline">
+                              {fmtShortDate(e.event_date)} · {e.title}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                  {data.attention.unassigned_tasks_count > 0 && (
+                    <div className={clsx(data.attention.events_without_coordinator.length > 0 && 'mt-4 border-t border-stone-100 pt-3')}>
+                      <p className="mb-2 flex items-center gap-1.5 text-xs text-stone-600">
+                        <UserX className="size-3.5" /> {data.attention.unassigned_tasks_count} open task{data.attention.unassigned_tasks_count > 1 ? 's' : ''} with no one assigned
+                      </p>
+                      <ul className="space-y-1 text-sm">
+                        {data.attention.unassigned_tasks.map((t) => {
+                          const late = t.due_date ? daysUntil(t.due_date) < 0 : false
+                          return (
+                            <li key={t.id}>
+                              <Link to={t.booking ? `/admin/events/${t.booking}` : '/admin/operations/tasks'} className="text-brand-700 hover:underline">
+                                {t.title}
+                              </Link>
+                              <span className={clsx('text-xs', late ? 'text-red-600' : 'text-stone-500')}>
+                                {' · '}
+                                {t.due_date ? fmtShortDate(t.due_date) : 'No date'}
+                                {t.booking_title && ` · ${t.booking_title}`}
+                              </span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                      {data.attention.unassigned_tasks_count > data.attention.unassigned_tasks.length && (
+                        <p className="mt-1 text-xs text-stone-500">+ {data.attention.unassigned_tasks_count - data.attention.unassigned_tasks.length} more on the Tasks page</p>
+                      )}
+                    </div>
+                  )}
                 </Panel>
               )}
             </div>

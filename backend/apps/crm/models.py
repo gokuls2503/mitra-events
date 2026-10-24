@@ -200,6 +200,7 @@ class Booking(EventTypesMixin, AuditedModel):
     end_date = models.DateField(null=True, blank=True, help_text="For multi-day events")
     start_time = models.TimeField(null=True, blank=True)
     setup_time = models.TimeField(null=True, blank=True, help_text="When the decor team must arrive")
+    setup_date = models.DateField(null=True, blank=True, help_text="Day decoration starts; blank means the event date")
     venue = models.CharField(max_length=200)
     venue_address = models.TextField(blank=True)
     guest_count = models.PositiveIntegerField(null=True, blank=True)
@@ -208,6 +209,8 @@ class Booking(EventTypesMixin, AuditedModel):
     coordinator = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="coordinated_bookings"
     )
+    # Typed by hand and shown on the event; `coordinator` above is the app user who gets access and tasks.
+    coordinator_text = models.CharField("coordinator", max_length=120, blank=True)
     notes = models.TextField(blank=True)
 
     class Meta:

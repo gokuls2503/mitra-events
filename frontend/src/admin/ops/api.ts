@@ -41,6 +41,7 @@ export interface BookingMini {
   number: string
   title: string
   event_date: string
+  end_date: string | null
   venue: string
 }
 
@@ -124,7 +125,11 @@ export interface Dashboard {
   }[]
   my_tasks?: Task[]
   my_follow_ups?: { id: number; lead: number; lead_name: string; lead_phone: string; kind_label: string; due_at: string; notes: string }[]
-  attention?: { events_without_coordinator: { id: number; number: string; title: string; event_date: string }[] }
+  attention?: {
+    events_without_coordinator: { id: number; number: string; title: string; event_date: string }[]
+    unassigned_tasks_count: number
+    unassigned_tasks: { id: number; title: string; due_date: string | null; booking: number | null; booking_title: string | null }[]
+  }
   finance?: {
     financial_year: string
     receivable: string

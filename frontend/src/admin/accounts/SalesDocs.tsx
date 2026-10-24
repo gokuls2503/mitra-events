@@ -316,7 +316,7 @@ function InvoiceView({ inv }: { inv: Invoice }) {
       {inv.status === 'CANCELLED' && <p className="mb-4 rounded-lg bg-stone-100 px-3 py-2 text-sm">Cancelled: {inv.cancel_reason}. The number stays used, as GST requires.</p>}
       <FormError error={issue.error ?? cancel.error ?? remove.error} />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <DocBody doc={inv} />
         <aside className="space-y-4">
           <Panel title="Payment">
@@ -441,7 +441,7 @@ function QuotationView({ q }: { q: Quotation }) {
         )}
       </DocHeader>
       <FormError error={setStatus.error ?? convert.error ?? remove.error} />
-      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <DocBody doc={q} />
         <aside className="space-y-4">
           {q.booking && (
@@ -520,33 +520,42 @@ function DocBody({ doc }: { doc: Invoice | Quotation }) {
           </p>
         </div>
       </div>
+      {'images' in doc && doc.images.length > 0 && (
+        <div className="mb-5 grid max-w-xl grid-cols-2 gap-3" aria-label="Images on the quotation PDF">
+          {doc.images.map((img, n) => (
+            <img key={img.id} src={img.image} alt={`Quotation image ${n + 1}`} className="aspect-[16/9] w-full rounded-lg object-cover ring-1 ring-stone-200" />
+          ))}
+        </div>
+      )}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[40rem] text-sm">
+        {/* Numbers never wrap and every column has the same gap, so figures line up cleanly. */}
+        <table className="w-full min-w-[30rem] text-sm">
           <thead className="border-b border-stone-200 text-left text-xs text-stone-500">
-            <tr>
-              <th className="py-2 font-medium">Description</th>
-              <th className="py-2 font-medium">SAC</th>
-              <th className="py-2 text-right font-medium">Qty</th>
-              <th className="py-2 text-right font-medium">Rate</th>
-              <th className="py-2 text-right font-medium">Disc.</th>
-              <th className="py-2 text-right font-medium">GST</th>
-              <th className="py-2 text-right font-medium">Amount</th>
+            <tr className="[&>th]:px-3 [&>th]:py-2.5 [&>th]:font-medium [&>th:first-child]:pl-0 [&>th:last-child]:pr-0">
+              <th>Description</th>
+              <th className="text-right">Qty</th>
+              <th className="text-right">Rate</th>
+              <th className="text-right">Disc.</th>
+              <th className="text-right">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
             {doc.items.map((i, n) => (
-              <tr key={n}>
-                <td className="py-2 pr-2">{i.description}</td>
-                <td className="py-2">{i.sac}</td>
-                <td className="py-2 text-right">
+              <tr key={n} className="align-top [&>td]:px-3 [&>td]:py-3 [&>td:first-child]:pl-0 [&>td:last-child]:pr-0">
+                <td className="leading-snug">
+                  {i.description}
+                  <span className="mt-1 block text-xs text-stone-500 tabular-nums">
+                    {i.sac && `SAC ${i.sac} · `}GST {Number(i.tax_rate)}%
+                  </span>
+                </td>
+                <td className="text-right whitespace-nowrap tabular-nums">
                   {Number(i.quantity)} {i.unit}
                 </td>
-                <td className="py-2 text-right">
+                <td className="text-right whitespace-nowrap tabular-nums">
                   <Money value={i.rate} />
                 </td>
-                <td className="py-2 text-right">{Number(i.discount) ? <Money value={i.discount} /> : '—'}</td>
-                <td className="py-2 text-right">{Number(i.tax_rate)}%</td>
-                <td className="py-2 text-right">
+                <td className="text-right whitespace-nowrap tabular-nums">{Number(i.discount) ? <Money value={i.discount} /> : <span className="text-stone-400">—</span>}</td>
+                <td className="text-right font-medium whitespace-nowrap tabular-nums">
                   <Money value={i.amount} />
                 </td>
               </tr>
@@ -554,7 +563,7 @@ function DocBody({ doc }: { doc: Invoice | Quotation }) {
           </tbody>
         </table>
       </div>
-      <dl className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
+      <dl className="mt-5 ml-auto max-w-xs space-y-1.5 border-t border-stone-100 pt-4 text-sm tabular-nums">
         <Line label="Taxable value" value={<Money value={doc.taxable_total} />} />
         {intra ? (
           <>

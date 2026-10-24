@@ -158,12 +158,13 @@ interface ConvertValues {
   event_date: string
   end_date: string
   start_time: string
+  setup_date: string
   setup_time: string
   venue: string
   venue_address: string
-  guest_count: string
   agreed_amount: string
   coordinator: string
+  coordinator_text: string
   notes: string
   client_name: string
   client_email: string
@@ -192,10 +193,10 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       event_date: lead.event_date ?? '',
       end_date: lead.end_date ?? '',
       start_time: lead.start_time?.slice(0, 5) ?? '',
+      setup_date: '',
       setup_time: lead.setup_time?.slice(0, 5) ?? '',
       venue: lead.venue,
       venue_address: lead.venue_address,
-      guest_count: lead.guest_count ? String(lead.guest_count) : '',
       agreed_amount: lead.budget ?? '',
       coordinator: coordinator ? String(coordinator) : '',
       notes: lead.message,
@@ -211,8 +212,8 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
         ...v,
         end_date: v.end_date || null,
         start_time: v.start_time || null,
+        setup_date: v.setup_date || null,
         setup_time: v.setup_time || null,
-        guest_count: v.guest_count ? Number(v.guest_count) : null,
         agreed_amount: v.agreed_amount || null,
         coordinator: v.coordinator ? Number(v.coordinator) : null,
         package: lead.package,
@@ -230,7 +231,7 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
           name="event_types"
           render={({ field }) => <MultiSelectField label="Event type *" options={EVENT_TYPES} value={field.value} onChange={field.onChange} />}
         />
-        <TextField label="Agreed amount (₹, before GST)" type="number" min={0} {...register('agreed_amount')} />
+        <TextField label="Amount (₹, before GST)" type="number" min={0} {...register('agreed_amount')} />
         <Controller
           control={control}
           name="event_date"
@@ -241,16 +242,31 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
           name="end_date"
           render={({ field }) => <DateField label="End date (multi-day events)" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
         />
-        <TextField label="Event start time" type="time" {...register('start_time')} />
-        <TextField label="Decor team arrives by" type="time" {...register('setup_time')} />
-        <TextField label="Venue *" required {...register('venue')} />
-        <TextField label="Guests" type="number" min={1} {...register('guest_count')} />
-        <TextAreaField label="Venue address" rows={2} {...register('venue_address')} />
-        <SelectField
-          label="Event coordinator"
-          options={[{ value: '', label: 'Not yet assigned' }, ...(team ?? []).map((m) => ({ value: String(m.id), label: m.full_name }))]}
-          {...register('coordinator')}
+        <TextField label="Handover time" hint="When the decor is handed over to the client" type="time" {...register('start_time')} />
+        <TextField label="Coordinator" placeholder="Type the coordinator's name" {...register('coordinator_text')} />
+        <Controller
+          control={control}
+          name="setup_date"
+          render={({ field }) => (
+            <DateField label="Decoration date" hint="Leave blank if it's the event date" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+          )}
         />
+        <TextField label="Decoration start time" type="time" {...register('setup_time')} />
+        <TextField label="Venue *" required {...register('venue')} />
+        <Controller
+          control={control}
+          name="coordinator"
+          // Controlled, so the saved staff member stays selected even if the team list loads after the form.
+          render={({ field }) => (
+            <SelectField
+              label="Assigned staff"
+              hint="The app user who can open this event and gets its tasks"
+              options={[{ value: '', label: 'Not yet assigned' }, ...(team ?? []).map((m) => ({ value: String(m.id), label: m.full_name }))]}
+              {...field}
+            />
+          )}
+        />
+        <TextAreaField label="Venue address" rows={2} className="sm:col-span-2" {...register('venue_address')} />
         <TextAreaField label="Notes" rows={2} className="sm:col-span-2" {...register('notes')} />
       </fieldset>
       <fieldset className="grid gap-4 border-t border-stone-100 pt-4 sm:grid-cols-2">

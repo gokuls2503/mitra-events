@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
@@ -12,6 +13,8 @@ import { useBookings, type Client } from '../crm/api'
 import { FormError } from '../kit'
 import { accounts, useAccountsMutation, useSettings, useTaxRates, type Invoice, type Item, type Quotation } from './api'
 import { previewLine, previewTotals, rupees } from './calc'
+import { QuotationImages } from './QuotationImages'
+import { photosOf, syncQuotationImages, type PhotoDraft } from './quotationPhotos'
 import { ClientPicker, Money } from './ui'
 
 type Kind = 'invoice' | 'quotation'
@@ -34,7 +37,12 @@ export interface Prefill {
 
 export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoice | Quotation; prefill?: Prefill }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data: settings } = useSettings()
+  // Quotation photos: edited locally, applied after the quotation itself saves.
+  const [savedPhotos] = useState<PhotoDraft[]>(() => photosOf(doc && 'images' in doc ? doc.images : []))
+  const [photos, setPhotos] = useState<PhotoDraft[]>(savedPhotos)
+  const [photoSync, setPhotoSync] = useState<{ busy: boolean; error: unknown }>({ busy: false, error: null })
   const { data: taxRates } = useTaxRates()
   const [client, setClient] = useState<Pick<Client, 'id' | 'name' | 'phone'> | null>(
     doc ? { id: doc.client, name: doc.client_name, phone: '' } : prefill?.client ?? null,
@@ -95,7 +103,21 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
       body.date = v.date
       if (v.second_date) body.valid_until = v.second_date
     }
-    save.mutate(body, { onSuccess: (saved) => navigate(`/admin/accounts/${kind}s/${saved.id}`) })
+    save.mutate(body, {
+      onSuccess: async (saved) => {
+        if (kind === 'quotation') {
+          setPhotoSync({ busy: true, error: null })
+          try {
+            await syncQuotationImages(saved.id, savedPhotos, photos)
+          } catch (error) {
+            setPhotoSync({ busy: false, error })
+            return
+          }
+          void queryClient.invalidateQueries({ queryKey: ['accounts'] })
+        }
+        navigate(`/admin/accounts/${kind}s/${saved.id}`)
+      },
+    })
   }
 
   const taxOptions = (taxRates ?? []).filter((t) => t.is_active).map((t) => ({ value: String(Number(t.rate)), label: `${Number(t.rate)}%` }))
@@ -226,18 +248,21 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
         </dl>
       </section>
 
+      {kind === 'quotation' && <QuotationImages value={photos} onChange={setPhotos} />}
+
       <section className="grid gap-4 rounded-xl border border-stone-200 bg-white p-5 sm:grid-cols-2">
         <TextAreaField label="Notes (printed)" rows={3} {...register('notes')} />
         <TextAreaField label="Terms" rows={3} hint={doc ? undefined : 'Leave blank to use the default terms from Settings.'} {...register('terms')} />
       </section>
 
-      <FormError error={save.error} />
+      <FormError error={save.error ?? photoSync.error} />
+      {photoSync.error != null && <p className="text-sm text-amber-700">The quotation was saved, but an image couldn't be uploaded. Try saving again.</p>}
       {!client && <p className="text-sm text-amber-700">Choose a client to save.</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!client} loading={save.isPending}>
+        <Button type="submit" disabled={!client} loading={save.isPending || photoSync.busy}>
           {doc ? 'Save changes' : kind === 'invoice' ? 'Save draft invoice' : 'Save quotation'}
         </Button>
       </div>

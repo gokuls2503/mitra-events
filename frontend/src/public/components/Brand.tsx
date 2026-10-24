@@ -8,41 +8,18 @@ function useSvgId() {
 }
 
 /**
- * The lotus from the visiting card: purple base petals, gold side petals, orchid centre.
- * `tone="gold"` draws it in gold only (dividers, watermarks).
+ * The Mitra lotus (the client's logo artwork, public/brand/lotus.png).
+ * `tone="gold"` is the faint ornament version used in dividers and watermarks.
  */
 export function LotusMark({ className, tone = 'full' }: { className?: string; tone?: 'full' | 'gold' }) {
-  const id = useSvgId()
-  const gold = `url(#${id}-gold)`
-  const purple = tone === 'gold' ? gold : `url(#${id}-purple)`
-  const orchid = tone === 'gold' ? gold : `url(#${id}-orchid)`
   return (
-    <svg viewBox="0 0 120 76" className={className} aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id={`${id}-gold`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ecd189" />
-          <stop offset="0.5" stopColor="#c39539" />
-          <stop offset="1" stopColor="#a27a26" />
-        </linearGradient>
-        <linearGradient id={`${id}-purple`} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#632d8c" />
-          <stop offset="0.5" stopColor="#a63ba3" />
-          <stop offset="1" stopColor="#632d8c" />
-        </linearGradient>
-        <linearGradient id={`${id}-orchid`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#f0a6d6" />
-          <stop offset="1" stopColor="#c4449f" />
-        </linearGradient>
-      </defs>
-      {/* Centre petal */}
-      <path d="M60 4c9 11 12 24 0 42C48 28 51 15 60 4Z" fill={orchid} />
-      {/* Gold side petals */}
-      <path d="M57 55C42 50 31 38 30 17c14 4 25 16 27 38Z" fill="none" stroke={gold} strokeWidth="4.5" strokeLinejoin="round" />
-      <path d="M63 55c15-5 26-17 27-38-14 4-25 16-27 38Z" fill="none" stroke={gold} strokeWidth="4.5" strokeLinejoin="round" />
-      {/* Purple base petals */}
-      <path d="M58 70C38 70 17 60 6 42c22 3 41 12 52 28Z" fill="none" stroke={purple} strokeWidth="5" strokeLinejoin="round" />
-      <path d="M62 70c20 0 41-10 52-28-22 3-41 12-52 28Z" fill="none" stroke={purple} strokeWidth="5" strokeLinejoin="round" />
-    </svg>
+    <img
+      src="/brand/lotus.png"
+      alt=""
+      aria-hidden="true"
+      draggable={false}
+      className={clsx('select-none', tone === 'gold' && 'opacity-70 saturate-50', className)}
+    />
   )
 }
 

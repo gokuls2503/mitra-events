@@ -26,6 +26,7 @@ from rest_framework.views import APIView
 from apps.accounts.models import Role
 from apps.core.numbering import financial_year
 from apps.core.permissions import RoleAccess
+from apps.crm import references
 from apps.crm.models import Booking
 
 from . import calc, exports, reports, services
@@ -38,6 +39,7 @@ from .models import (
     JournalEntry,
     Ledger,
     Quotation,
+    QuotationImage,
     Receipt,
     ReceiptAllocation,
     TaxRate,
@@ -198,7 +200,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
     ordering_fields = ["date", "total", "number"]
 
     def get_queryset(self):
-        return Quotation.objects.select_related("client", "booking").prefetch_related("items")
+        return Quotation.objects.select_related("client", "booking").prefetch_related("items", "images")
 
     def perform_create(self, serializer):
         data = dict(serializer.validated_data)
@@ -214,6 +216,29 @@ class QuotationViewSet(viewsets.ModelViewSet):
         if instance.status != Quotation.Status.DRAFT:
             raise ValidationError("Only draft quotations can be deleted. Mark it rejected instead.")
         instance.delete()
+
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
+    def images(self, request, pk=None):
+        """Add a photo for the PDF (at most two; checked and resized like lead references)."""
+        quotation = self.get_object()
+        if quotation.images.count() >= QuotationImage.MAX_PER_QUOTATION:
+            raise ValidationError({"image": f"A quotation can have at most {QuotationImage.MAX_PER_QUOTATION} images."})
+        upload = request.FILES.get("image")
+        if upload is None:
+            raise ValidationError({"image": "Choose an image."})
+        try:
+            image, _thumb = references.process_upload(upload)
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict)
+        img = QuotationImage.objects.create(quotation=quotation, image=image)
+        return Response(s.QuotationImageSerializer(img).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path=r"images/(?P<image_id>\d+)")
+    def delete_image(self, request, pk=None, image_id=None):
+        img = get_object_or_404(QuotationImage, pk=image_id, quotation=self.get_object())
+        img.image.delete(save=False)
+        img.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="set-status")
     def set_status(self, request, pk=None):

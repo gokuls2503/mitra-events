@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { LogOut, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
@@ -15,6 +15,11 @@ export function AdminLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
+  // Only the content area scrolls, so the browser no longer resets it between pages; do it here.
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0)
+  }, [pathname])
   // In-app indicator only (no email/WhatsApp alerts, by the owner's choice). Refreshes every minute.
   const { data: pipeline } = usePipeline({}, { refetchInterval: 60_000 })
 
@@ -70,8 +75,10 @@ export function AdminLayout() {
   )
 
   return (
-    <div className="min-h-screen bg-stone-50 lg:grid lg:grid-cols-[16rem_1fr] print:block print:bg-white">
-      <aside className="hidden bg-brand-800 lg:block print:hidden">{sidebar}</aside>
+    // App frame: the sidebar and the top bar stay put; only the page content (<main>) scrolls.
+    // Printing goes back to normal flow so long documents aren't cut off.
+    <div className="h-dvh overflow-hidden bg-stone-50 lg:grid lg:grid-cols-[16rem_1fr] print:block print:h-auto print:overflow-visible print:bg-white">
+      <aside className="hidden overflow-y-auto bg-brand-800 lg:block print:hidden">{sidebar}</aside>
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
@@ -89,8 +96,8 @@ export function AdminLayout() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-col">
-        <header className="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-3 lg:px-8 print:hidden">
+      <div className="flex h-dvh min-w-0 flex-col print:h-auto">
+        <header className="flex shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4 py-3 lg:px-8 print:hidden">
           <button className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />
           </button>
@@ -109,11 +116,15 @@ export function AdminLayout() {
             </button>
           </div>
         </header>
-        <main className="flex-1 p-4 lg:p-8">
-          {/* Keyed by path so navigating away from a crashed page recovers. */}
-          <ErrorBoundary key={pathname}>
-            <Outlet />
-          </ErrorBoundary>
+        {/* The scrolling area has no padding of its own (the inner div has it): sticky bars such as
+            "Save settings" respect a scroller's padding and would otherwise float above the bottom. */}
+        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
+          <div className="p-4 lg:p-8">
+            {/* Keyed by path so navigating away from a crashed page recovers. */}
+            <ErrorBoundary key={pathname}>
+              <Outlet />
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
     </div>

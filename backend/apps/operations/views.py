@@ -9,7 +9,7 @@ Access:
 
 import datetime
 
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from rest_framework import status, viewsets
@@ -31,6 +31,20 @@ from .models import EventAssignment, Task, Vendor
 # --- Vendors ------------------------------------------------------------------------
 
 
+def upcoming_jobs_q(prefix: str = "") -> Q:
+    """A vendor/staff job still to come: the event hasn't ended yet (a multi-day event in
+    progress counts), and neither the job nor the event is cancelled. `prefix` is the path
+    to the assignment, e.g. "assignments__" from a Vendor."""
+    today = timezone.localdate()
+    b = f"{prefix}booking__"
+    return (
+        (Q(**{f"{b}end_date__gte": today}) | Q(**{f"{b}end_date__isnull": True, f"{b}event_date__gte": today}))
+        & ~Q(**{f"{prefix}status": EventAssignment.Status.CANCELLED})
+        & ~Q(**{f"{b}status": Booking.Status.CANCELLED})
+    )
+
+
+
 class VendorViewSet(viewsets.ModelViewSet):
     permission_classes = [RoleAccess]
     read_roles = ALL_ROLES
@@ -41,15 +55,8 @@ class VendorViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "category"]
 
     def get_queryset(self):
-        today = timezone.localdate()
-        return Vendor.objects.annotate(
-            upcoming_jobs=Count(
-                "assignments",
-                filter=Q(assignments__booking__event_date__gte=today)
-                & ~Q(assignments__status=EventAssignment.Status.CANCELLED)
-                & ~Q(assignments__booking__status=Booking.Status.CANCELLED),
-            )
-        ).order_by("name")
+        # Same rule as the assignment list's `upcoming` filter, so the count and the list agree.
+        return Vendor.objects.annotate(upcoming_jobs=Count("assignments", filter=upcoming_jobs_q("assignments__"))).order_by("name")
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, updated_by=self.request.user)
@@ -66,12 +73,23 @@ class VendorViewSet(viewsets.ModelViewSet):
 # --- Assignments ----------------------------------------------------------------------
 
 
+class AssignmentFilter(filters.FilterSet):
+    upcoming = filters.BooleanFilter(method="filter_upcoming", help_text="Jobs still to come (see upcoming_jobs_q)")
+
+    class Meta:
+        model = EventAssignment
+        fields = ["booking", "staff", "vendor", "status"]
+
+    def filter_upcoming(self, qs, name, value):
+        return qs.filter(upcoming_jobs_q()) if value else qs.exclude(upcoming_jobs_q())
+
+
 class AssignmentViewSet(viewsets.ModelViewSet):
     permission_classes = [RoleAccess]
     read_roles = ALL_ROLES
     write_roles = MANAGERS
     serializer_class = s.AssignmentSerializer
-    filterset_fields = ["booking", "staff", "vendor", "status"]
+    filterset_class = AssignmentFilter
     pagination_class = None
 
     def get_queryset(self):
@@ -299,6 +317,7 @@ class DashboardView(APIView):
         ]
         if manager:
             soon = today + datetime.timedelta(days=30)
+            unassigned_tasks = Task.objects.filter(assigned_to__isnull=True).exclude(status=Task.Status.DONE)
             data["attention"] = {
                 "events_without_coordinator": list(
                     Booking.objects.filter(
@@ -307,5 +326,11 @@ class DashboardView(APIView):
                     .order_by("event_date")
                     .values("id", "number", "title", "event_date")[:8]
                 ),
+                # Open tasks nobody owns never reach anyone's "My tasks", so surface them here.
+                "unassigned_tasks_count": unassigned_tasks.count(),
+                "unassigned_tasks": [
+                    {"id": t.id, "title": t.title, "due_date": t.due_date, "booking": t.booking_id, "booking_title": t.booking.title if t.booking else None}
+                    for t in unassigned_tasks.select_related("booking").order_by(F("due_date").asc(nulls_last=True), "-priority")[:8]
+                ],
             }
         return Response(data)

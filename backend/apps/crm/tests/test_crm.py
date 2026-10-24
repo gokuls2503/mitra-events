@@ -241,6 +241,22 @@ class TestScoping:
         assert res.status_code == 200 and res.data["assigned_to_detail"]["id"] == team["staff"].pk
         assert l.activities.filter(kind=LeadActivity.Kind.ASSIGNED).exists()
 
+    def test_reassign_moves_previous_owners_pending_follow_ups(self, team):
+        l = lead(assigned_to=team["staff"])
+        due = timezone.now() + datetime.timedelta(days=1)
+        theirs = FollowUp.objects.create(lead=l, due_at=due, assigned_to=team["staff"])
+        done = FollowUp.objects.create(lead=l, due_at=due, assigned_to=team["staff"], completed_at=timezone.now())
+        manager_s = FollowUp.objects.create(lead=l, due_at=due, assigned_to=team["manager"])
+        res = api(team["manager"]).post(f"/api/v1/crm/leads/{l.pk}/assign/", {"assigned_to": team["staff2"].pk}, format="json")
+        assert res.status_code == 200
+        for fu in (theirs, done, manager_s):
+            fu.refresh_from_db()
+        assert theirs.assigned_to == team["staff2"]
+        assert done.assigned_to == team["staff"]  # history stays as it was
+        assert manager_s.assigned_to == team["manager"]  # given to someone else on purpose
+        assert "1 pending follow-up moved" in l.activities.filter(kind=LeadActivity.Kind.ASSIGNED).latest("created_at").text
+        assert theirs.pk in [f["id"] for f in api(team["staff2"]).get("/api/v1/crm/follow-ups/?due=upcoming").data["results"]]
+
     def test_cannot_assign_to_accountant(self, team):
         l = lead()
         res = api(team["manager"]).post(f"/api/v1/crm/leads/{l.pk}/assign/", {"assigned_to": team["accountant"].pk}, format="json")
@@ -439,3 +455,36 @@ def test_convert_saves_times(team):
     )
     assert res.status_code == 201, res.data
     assert (res.data["start_time"], res.data["setup_time"]) == ("18:30:00", "14:00:00")
+
+
+@pytest.mark.django_db
+class TestEventCard:
+    def test_decoration_date_and_typed_coordinator(self, team):
+        c = api(team["manager"])
+        res = c.post(
+            f"/api/v1/crm/leads/{lead().pk}/convert/",
+            booking_payload(setup_date=(NEXT_MONTH - datetime.timedelta(days=1)).isoformat(), setup_time="09:00", coordinator_text="Ravi"),
+            format="json",
+        )
+        assert res.status_code == 201, res.data
+        assert (res.data["setup_date"], res.data["setup_time"], res.data["coordinator_text"]) == (
+            (NEXT_MONTH - datetime.timedelta(days=1)).isoformat(),
+            "09:00:00",
+            "Ravi",
+        )
+        res = c.patch(f"/api/v1/crm/bookings/{res.data['id']}/", {"setup_date": (NEXT_MONTH + datetime.timedelta(days=1)).isoformat()}, format="json")
+        assert res.status_code == 400 and "setup_date" in res.data
+
+    def test_amount_is_the_approved_quotation(self, team):
+        from apps.accounting.models import Quotation
+
+        l = lead()
+        b = services.convert_to_booking(l, title="Kavya wedding", event_type="WEDDING", event_date=NEXT_MONTH, venue="Hall")
+        c = api(team["manager"])
+        assert c.get(f"/api/v1/crm/bookings/{b.pk}/").data["approved_quotation"] is None
+        Quotation.objects.create(number="QT/1", client=b.client, lead=l, date=timezone.localdate(), status="ACCEPTED", total="59000.00")
+        Quotation.objects.create(number="QT/2", client=b.client, booking=b, date=timezone.localdate(), status="DRAFT", total="1.00")
+        assert c.get(f"/api/v1/crm/bookings/{b.pk}/").data["approved_quotation"]["number"] == "QT/1"
+        Quotation.objects.create(number="QT/3", client=b.client, booking=b, date=timezone.localdate(), status="ACCEPTED", total="61000.00")
+        q = c.get(f"/api/v1/crm/bookings/{b.pk}/").data["approved_quotation"]
+        assert (q["number"], q["total"]) == ("QT/3", "61000.00")

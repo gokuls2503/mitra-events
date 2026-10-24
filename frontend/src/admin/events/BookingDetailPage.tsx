@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
-import { daysUntil, fmtDate, fmtDateTime, fmtTime } from '@/shared/dates'
+import { daysUntil, fmtDate, fmtDateRange, fmtDateTime, fmtDayMonYear, fmtTime } from '@/shared/dates'
 import { formatINR, prettyPhone, telLink, waLink } from '@/shared/format'
 import { Button } from '@/shared/ui/Button'
 import { Modal } from '@/shared/ui/Modal'
@@ -47,11 +47,22 @@ function BookingDetail({ booking: b }: { booking: Booking }) {
             <h1 className="font-display text-3xl font-semibold text-brand-800">{b.title}</h1>
             <BookingStatusPill status={b.status} label={b.status_label} />
           </div>
-          <p className="text-sm text-stone-600">
+          {/* On screen only how far away it is; the printed event sheet still needs the date. */}
+          <p className="hidden text-sm text-stone-600 print:block">
             {fmtDate(b.event_date)}
             {b.end_date && ` – ${fmtDate(b.end_date)}`}
-            {b.status !== 'CANCELLED' && b.status !== 'COMPLETED' && (days >= 0 ? ` · ${days === 0 ? 'today' : `in ${days} day${days > 1 ? 's' : ''}`}` : ' · date has passed')}
           </p>
+          {b.status !== 'CANCELLED' && b.status !== 'COMPLETED' && (
+            <p className="text-sm text-stone-600 print:hidden">
+              {days >= 0
+                ? days === 0
+                  ? 'today'
+                  : `in ${days} day${days > 1 ? 's' : ''}`
+                : b.end_date && daysUntil(b.end_date) >= 0
+                  ? 'ongoing'
+                  : 'date has passed'}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 sm:ml-auto print:hidden">
           <Button variant="secondary" onClick={() => window.print()} title="Printable sheet for the decor team">
@@ -84,14 +95,25 @@ function BookingDetail({ booking: b }: { booking: Booking }) {
               {b.venue}
               {b.venue_address && <span className="block text-stone-600 whitespace-pre-line">{b.venue_address}</span>}
             </Item>
-            <Item label="Timing">
-              {b.start_time ? `Starts ${fmtTime(b.start_time)}` : 'Start time not set'}
-              {b.setup_time && <span className="block text-stone-600">Decor team arrives by {fmtTime(b.setup_time)}</span>}
+            <Item label="Event date">
+              {fmtDateRange(b.event_date, b.end_date)}
+              {b.start_time ? ` - ${fmtTime(b.start_time)}` : <span className="block text-xs text-stone-500">Handover time not set</span>}
             </Item>
-            <Item label="Guests">{b.guest_count ?? '—'}</Item>
-            <Item label="Agreed amount" className="print:hidden">{b.agreed_amount ? `${formatINR(b.agreed_amount)} + GST` : '—'}</Item>
-            <Item label="Coordinator">{b.coordinator_name ?? <span className="text-amber-700">Not yet assigned</span>}</Item>
+            <Item label="Decoration">
+              {b.setup_date || b.setup_time ? (
+                <>
+                  {fmtDayMonYear(b.setup_date ?? b.event_date)}
+                  {b.setup_time ? ` - ${fmtTime(b.setup_time)}` : <span className="block text-xs text-stone-500">Start time not set</span>}
+                </>
+              ) : (
+                <span className="text-stone-500">Not set</span>
+              )}
+            </Item>
+            <Item label="Coordinator">{b.coordinator_text || '—'}</Item>
             <Item label="Package">{b.package_name ?? '—'}</Item>
+            <Item label="Amount" className="print:hidden">
+              {b.agreed_amount ? `${formatINR(b.agreed_amount)} + GST` : <span className="text-stone-500">Not set</span>}
+            </Item>
           </dl>
           {b.notes && <p className="mt-5 rounded-lg bg-stone-50 p-3 text-sm whitespace-pre-line text-stone-700">{b.notes}</p>}
           <p className="mt-5 text-xs text-stone-400 print:hidden">Created {fmtDateTime(b.created_at)}.</p>

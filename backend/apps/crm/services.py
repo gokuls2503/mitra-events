@@ -67,10 +67,20 @@ def change_status(lead: Lead, status: str, *, user=None, lost_reason: str = "", 
 def assign(lead: Lead, assignee, *, user=None) -> Lead:
     if lead.assigned_to_id == (assignee.pk if assignee else None):
         return lead
+    previous = lead.assigned_to_id
     lead.assigned_to = assignee
     lead.updated_by = user
     lead.save(update_fields=["assigned_to", "updated_by", "updated_at"])
-    record(lead, LeadActivity.Kind.ASSIGNED, f"Assigned to {_display(assignee)}", user)
+    # The previous owner's pending follow-ups go with the lead; ones given to someone else stay put.
+    moved = 0
+    if previous:
+        moved = lead.follow_ups.filter(completed_at__isnull=True, assigned_to_id=previous).update(
+            assigned_to=assignee, updated_at=timezone.now()
+        )
+    text = f"Assigned to {_display(assignee)}"
+    if moved:
+        text += f" · {moved} pending follow-up{'s' if moved > 1 else ''} moved too"
+    record(lead, LeadActivity.Kind.ASSIGNED, text, user)
     return lead
 
 

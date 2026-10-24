@@ -137,15 +137,20 @@ export interface Booking {
   event_date: string
   end_date: string | null
   start_time: string | null
+  setup_date: string | null
   setup_time: string | null
   venue: string
   venue_address: string
   guest_count: number | null
   agreed_amount: string | null
+  /** Latest quotation the client accepted; total includes GST. */
+  approved_quotation: { id: number; number: string; total: string } | null
   status: BookingStatus
   status_label: string
   coordinator: number | null
   coordinator_name: string | null
+  /** Typed-in coordinator shown on the event (coordinator / coordinator_name is the app user). */
+  coordinator_text: string
   notes: string
   created_at: string
 }

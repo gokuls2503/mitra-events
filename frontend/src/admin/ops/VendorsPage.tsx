@@ -13,6 +13,7 @@ import { Modal } from '@/shared/ui/Modal'
 
 import { DeleteButton, EmptyState, FormError, Pagination, QueryState, TABLE, TABLE_WRAP, THEAD } from '../kit'
 import { ops, useAssignments, useOpsMutation, useVendors, VENDOR_CATEGORIES, type Vendor } from './api'
+import { UpcomingJobsDialog } from './VendorUpcomingJobs'
 
 const PAGE_SIZE = 25
 
@@ -25,6 +26,7 @@ export default function VendorsPage() {
   const [showInactive, setShowInactive] = useState(false)
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState<Vendor | 'new' | null>(null)
+  const [jobsFor, setJobsFor] = useState<Vendor | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -86,7 +88,15 @@ export default function VendorsPage() {
       {data && data.results.length > 0 && (
         <>
           <div className={TABLE_WRAP}>
-            <table className={TABLE}>
+            {/* Fixed column widths (as in the approved layout) so every row lines up the same way. */}
+            <table className={clsx(TABLE, 'min-w-[56rem] table-fixed')}>
+              <colgroup>
+                <col className="w-[25%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[25%]" />
+                <col className="w-[10%]" />
+              </colgroup>
               <thead className={THEAD}>
                 <tr>
                   <th className="px-4 py-3">Vendor</th>
@@ -102,9 +112,7 @@ export default function VendorsPage() {
                 {data.results.map((v) => (
                   <tr key={v.id} className={clsx('hover:bg-brand-50', !v.is_active && 'opacity-60')}>
                     <td className="px-4 py-3">
-                      <button onClick={() => setOpen(v)} className="font-medium text-brand-800 hover:underline">
-                        {v.name}
-                      </button>
+                      <span className="font-medium text-stone-900">{v.name}</span>
                       {!v.is_active && <span className="ml-2 text-xs text-stone-500">Inactive</span>}
                     </td>
                     <td className="px-4 py-3">{v.category_label}</td>
@@ -112,10 +120,34 @@ export default function VendorsPage() {
                       {v.contact_person && <span className="block">{v.contact_person}</span>}
                       <span className="text-xs text-stone-500">{prettyPhone(v.phone)}</span>
                     </td>
-                    <td className="px-4 py-3">{v.upcoming_jobs || '—'}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        <a href={telLink(v.phone)} aria-label={`Call ${v.name}`} className="rounded-lg p-1.5 text-stone-600 hover:bg-stone-100">
+                      {/* Count, View and Edit start at evenly spaced positions in every row; when there's
+                          nothing to view, that slot stays empty so Edit keeps its place. */}
+                      <span className="grid grid-cols-[repeat(3,5rem)] items-center">
+                        <span className={clsx('tabular-nums', !v.upcoming_jobs && 'text-stone-400')}>{v.upcoming_jobs}</span>
+                        <span>
+                          {v.upcoming_jobs > 0 && (
+                            <button onClick={() => setJobsFor(v)} className={LINK} aria-label={`View ${v.upcoming_jobs} upcoming jobs for ${v.name}`}>
+                              View
+                            </button>
+                          )}
+                        </span>
+                        <span>
+                          {isManager && (
+                            <button onClick={() => setOpen(v)} className={LINK} aria-label={`Edit ${v.name}`}>
+                              Edit
+                            </button>
+                          )}
+                        </span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <a
+                          href={telLink(v.phone)}
+                          aria-label={`Call ${v.name}`}
+                          className="grid size-9 place-items-center rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                        >
                           <Phone className="size-4" />
                         </a>
                         <a
@@ -123,7 +155,7 @@ export default function VendorsPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           aria-label={`WhatsApp ${v.name}`}
-                          className="rounded-lg p-1.5 text-green-700 hover:bg-green-50"
+                          className="grid size-9 place-items-center rounded-lg border border-stone-200 text-green-700 hover:bg-green-50"
                         >
                           <MessageCircle className="size-4" />
                         </a>
@@ -137,8 +169,9 @@ export default function VendorsPage() {
           <Pagination page={page} count={data.count} pageSize={PAGE_SIZE} onPage={setPage} />
         </>
       )}
-      <Modal wide open={open !== null} title={open === 'new' ? 'Add vendor' : open ? open.name : ''} onClose={() => setOpen(null)}>
-        {open !== null && (isManager ? <VendorForm vendor={open === 'new' ? undefined : open} onDone={() => setOpen(null)} /> : open !== 'new' && <VendorJobs vendor={open} />)}
+      <UpcomingJobsDialog vendor={jobsFor} onClose={() => setJobsFor(null)} />
+      <Modal wide open={open !== null && isManager} title={open === 'new' ? 'Add vendor' : open ? `Edit ${open.name}` : ''} onClose={() => setOpen(null)}>
+        {open !== null && <VendorForm vendor={open === 'new' ? undefined : open} onDone={() => setOpen(null)} />}
       </Modal>
     </div>
   )
@@ -186,6 +219,8 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
     </div>
   )
 }
+
+const LINK = "relative font-medium text-brand-700 after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:underline"
 
 function VendorJobs({ vendor }: { vendor: Vendor }) {
   const { data } = useAssignments({ vendor: vendor.id })

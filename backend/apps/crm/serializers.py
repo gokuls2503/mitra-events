@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -267,6 +268,7 @@ class BookingSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
     package = serializers.PrimaryKeyRelatedField(queryset=Package.objects.all(), required=False, allow_null=True)
     package_name = serializers.CharField(source="package.name", read_only=True, default=None)
     lead_id = serializers.IntegerField(source="lead.id", read_only=True, default=None)
+    approved_quotation = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -286,15 +288,18 @@ class BookingSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
             "event_date",
             "end_date",
             "start_time",
+            "setup_date",
             "setup_time",
             "venue",
             "venue_address",
             "guest_count",
             "agreed_amount",
+            "approved_quotation",
             "status",
             "status_label",
             "coordinator",
             "coordinator_name",
+            "coordinator_text",
             "notes",
             "created_at",
             "updated_at",
@@ -310,9 +315,28 @@ class BookingSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
         end = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start and end and end < start:
             raise serializers.ValidationError({"end_date": "End date can't be before the event date."})
+        check_setup_date(attrs.get("setup_date", getattr(self.instance, "setup_date", None)), start, end)
         if self.instance and "client" in attrs and attrs["client"] != self.instance.client:
             raise serializers.ValidationError({"client": "A booking can't be moved to another client."})
         return attrs
+
+    def get_approved_quotation(self, booking):
+        """The latest quotation the client accepted (or that became an invoice), made for this
+        event or for its enquiry before it was converted. Its total includes GST."""
+        from apps.accounting.models import Quotation  # accounting builds on crm, not vice versa
+
+        q = (
+            Quotation.objects.filter(status__in=[Quotation.Status.ACCEPTED, Quotation.Status.INVOICED])
+            .filter(Q(booking=booking) | Q(lead_id=booking.lead_id) if booking.lead_id else Q(booking=booking))
+            .only("id", "number", "total")
+            .first()
+        )
+        return {"id": q.id, "number": q.number, "total": str(q.total)} if q else None
+
+
+def check_setup_date(setup_date, event_date, end_date):
+    if setup_date and event_date and setup_date > (end_date or event_date):
+        raise serializers.ValidationError({"setup_date": "Decoration can't start after the event."})
 
 
 class ConvertLeadSerializer(EventTypesFieldsMixin, serializers.Serializer):
@@ -326,12 +350,14 @@ class ConvertLeadSerializer(EventTypesFieldsMixin, serializers.Serializer):
     event_date = serializers.DateField()
     end_date = serializers.DateField(required=False, allow_null=True)
     start_time = serializers.TimeField(required=False, allow_null=True)
+    setup_date = serializers.DateField(required=False, allow_null=True)
     setup_time = serializers.TimeField(required=False, allow_null=True)
     venue = serializers.CharField(max_length=200)
     venue_address = serializers.CharField(required=False, allow_blank=True)
     guest_count = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     agreed_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True, min_value=0)
     coordinator = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
+    coordinator_text = serializers.CharField(required=False, allow_blank=True, max_length=120)
     notes = serializers.CharField(required=False, allow_blank=True)
 
     client_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
@@ -345,6 +371,7 @@ class ConvertLeadSerializer(EventTypesFieldsMixin, serializers.Serializer):
             raise serializers.ValidationError({"event_types": "Pick at least one event type."})
         if attrs.get("end_date") and attrs["end_date"] < attrs["event_date"]:
             raise serializers.ValidationError({"end_date": "End date can't be before the event date."})
+        check_setup_date(attrs.get("setup_date"), attrs["event_date"], attrs.get("end_date"))
         return attrs
 
     def split(self):

@@ -1,0 +1,353 @@
+<!doctype html>
+<!--
+  Mitra Events — quotation / invoice layout (HTML version of the approved PDF design).
+  Standalone mock-up with sample data from the reference PDF. Not wired into the app yet.
+  A4 portrait; prints edge to edge (Cmd/Ctrl + P → Save as PDF, margins "None").
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quotation — Mr. Rajavel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Roboto:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --purple: #7a2a96;
+        --purple-dark: #5c1f75;
+        --gold-1: #8a6a2a;
+        --gold-2: #f3dc8a;
+        --gold-3: #b8902f;
+        --ink: #1f1f1f;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: #e9e7ea;
+        color: var(--ink);
+        font-family: 'Roboto', Arial, sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      /* One A4 sheet. */
+      .page {
+        position: relative;
+        width: 210mm;
+        height: 297mm;
+        margin: 10mm auto;
+        background: #fff;
+        box-shadow: 0 2px 16px rgb(0 0 0 / 0.15);
+        overflow: hidden;
+      }
+
+      @media print {
+        html,
+        body {
+          background: #fff;
+        }
+        .page {
+          margin: 0;
+          box-shadow: none;
+        }
+      }
+
+      /* ---------- Header ---------- */
+      .header {
+        position: absolute;
+        top: 7mm;
+        left: 4mm;
+        right: 0;
+        height: 25mm;
+        background: #fff;
+        border-bottom: 0.6mm solid var(--purple);
+      }
+
+      .brand {
+        position: absolute;
+        left: 8mm;
+        top: 2.5mm;
+        display: flex;
+        align-items: center;
+        gap: 7mm;
+      }
+
+      .brand .lotus {
+        width: 27mm;
+        height: auto;
+      }
+
+      .wordmark {
+        font-family: 'Marcellus', Georgia, serif;
+        color: var(--purple);
+        line-height: 1;
+      }
+
+      .wordmark .name {
+        font-size: 12.5mm;
+        letter-spacing: 0.2mm;
+      }
+
+      .wordmark .sub {
+        display: block;
+        margin-top: 0.6mm;
+        padding-left: 2.5mm;
+        font-size: 6.4mm;
+        letter-spacing: 3.2mm;
+      }
+
+      /* Purple tab with the GSTIN, cut at an angle on the left, gold bar beneath. */
+      .gstin {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 77mm;
+        height: 19.5mm;
+        background: var(--purple);
+        clip-path: polygon(23% 0, 100% 0, 100% 100%, 0 100%);
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        padding: 0 9mm 3.6mm 0;
+        color: #fff;
+        font-family: 'Times New Roman', Times, serif;
+        font-weight: 700;
+        font-size: 3.55mm;
+        letter-spacing: 0.1mm;
+        font-variant-numeric: lining-nums;
+      }
+
+      .gstin-gold {
+        position: absolute;
+        right: 0;
+        top: 19.5mm;
+        width: 77mm;
+        height: 5mm;
+        background: linear-gradient(90deg, var(--gold-1), var(--gold-2) 45%, var(--gold-3) 75%, var(--gold-1));
+      }
+
+      /* ---------- Client & event ---------- */
+      .meta {
+        position: absolute;
+        top: 41mm;
+        left: 16mm;
+        right: 16mm;
+        display: grid;
+        grid-template-columns: 1fr 1fr 0.6fr;
+        font-size: 4mm;
+        line-height: 1.3;
+      }
+
+      .meta .event {
+        text-align: center;
+      }
+
+      /* ---------- Reference photo ---------- */
+      .photo {
+        position: absolute;
+        top: 62mm;
+        left: 17mm;
+        width: 92mm;
+        height: 51.5mm;
+        object-fit: cover;
+        background: linear-gradient(135deg, #3d3226, #c9a14a 55%, #f1e3b0);
+      }
+
+      /* Placeholder until a real Design / Stage image is used. */
+      .photo-placeholder {
+        display: grid;
+        place-items: center;
+        color: rgb(255 255 255 / 0.85);
+        font-size: 3.4mm;
+        letter-spacing: 0.3mm;
+      }
+
+      /* ---------- Items ---------- */
+      .items {
+        position: absolute;
+        top: 115.5mm;
+        left: 15mm;
+        right: 30mm;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-size: 4mm;
+      }
+
+      .item {
+        display: grid;
+        grid-template-columns: 1fr 10mm 31mm;
+        align-items: baseline;
+        height: 13.4mm;
+      }
+
+      .dash {
+        text-align: center;
+      }
+
+      .amount {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* "Price not quoted yet" — the dashed line from the paper version. */
+      .amount.blank {
+        letter-spacing: 0;
+        font-size: 3.6mm;
+      }
+
+      /* ---------- Totals ---------- */
+      .totals {
+        position: absolute;
+        top: 179mm;
+        left: 15mm;
+        right: 31mm;
+        font-size: 4mm;
+        line-height: 1.12;
+      }
+
+      .total {
+        display: grid;
+        grid-template-columns: 1fr 10mm 31mm;
+      }
+
+      .total .label {
+        text-align: right;
+        padding-right: 13mm;
+      }
+
+      /* ---------- Footer ---------- */
+      .footer {
+        position: absolute;
+        left: 13.5mm;
+        right: 7mm;
+        bottom: 13mm;
+      }
+
+      .footer-gold {
+        height: 3mm;
+        background: linear-gradient(90deg, var(--gold-1), var(--gold-2) 30%, var(--gold-3) 60%, var(--gold-2) 85%, var(--gold-1));
+      }
+
+      .footer-band {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4.5mm;
+        height: 10.5mm;
+        padding: 0 3mm;
+        background: var(--purple);
+        color: #fff;
+        font-family: 'Times New Roman', Times, serif;
+        font-weight: 700;
+        font-size: 3.35mm;
+        font-variant-numeric: lining-nums;
+        white-space: nowrap;
+      }
+
+      .footer-band span {
+        display: inline-flex;
+        align-items: center;
+        gap: 1.6mm;
+      }
+
+      .footer-band svg {
+        width: 3.6mm;
+        height: 3.6mm;
+        flex: none;
+      }
+
+      .footer-address {
+        margin-top: 1.6mm;
+        text-align: center;
+        color: var(--purple);
+        font-family: 'Times New Roman', Times, serif;
+        font-size: 2.85mm;
+        font-variant-numeric: lining-nums;
+      }
+
+      .footer-address b {
+        font-size: 3.3mm;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <!-- Header: lotus + wordmark, GSTIN tab -->
+      <header class="header">
+        <div class="brand">
+          <img class="lotus" src="lotus.png" alt="">
+          <div class="wordmark">
+            <span class="name">Mitra Events</span>
+            <span class="sub">management</span>
+          </div>
+        </div>
+        <div class="gstin">GSTIN - 33AULPG4138N1ZE</div>
+        <div class="gstin-gold"></div>
+      </header>
+
+      <!-- Client and event -->
+      <section class="meta">
+        <div>
+          Mr. Rajavel<br />
+          Ph 9003567253
+        </div>
+        <div class="event">
+          JASMADEVI Mahall<br />
+          12/13/Nov/2026
+        </div>
+        <div></div>
+      </section>
+
+      <!-- Reference photo (will come from the lead's Design / Stage images) -->
+      <div class="photo photo-placeholder">Stage reference photo</div>
+
+      <!-- Line items: description · "--" · amount (dashes when not priced) -->
+      <ol class="items">
+        <li class="item"><span>1. Main backdrop with mixing flowers and lightnings accessories</span><span class="dash">--</span><span class="amount">55000.00</span></li>
+        <li class="item"><span>2. Morning Alteration with design, (Labour charge only)</span><span class="dash">--</span><span class="amount">6000.00</span></li>
+        <li class="item"><span>3. Welcome back drop with flowers</span><span class="dash">--</span><span class="amount blank">--------------------</span></li>
+        <li class="item"><span>5 flex 10x8-- 2no</span><span class="dash">--</span><span class="amount blank">------------------</span></li>
+        <li class="item"><span>7. Car decorations 1no</span><span class="dash">--</span><span class="amount blank">--------------------</span></li>
+      </ol>
+
+      <!-- Totals -->
+      <section class="totals">
+        <div class="total"><span class="label">Amount rs</span><span class="dash">--</span><span class="amount">61000.00</span></div>
+        <div class="total"><span class="label">26/09/2026 1st advance rs</span><span class="dash">--</span><span class="amount">10000.00</span></div>
+        <div class="total"><span class="label">Balance rs</span><span class="dash">--</span><span class="amount">51000.00</span></div>
+      </section>
+
+      <!-- Footer: gold bar, purple contact band, address -->
+      <footer class="footer">
+        <div class="footer-gold"></div>
+        <div class="footer-band">
+          <span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2" fill="currentColor" /><path d="m3 6.5 9 6.5 9-6.5" fill="none" stroke="#7a2a96" stroke-width="2" /></svg>
+            mitraeventsmanagement@gmail.com
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1" fill="currentColor" /></svg>
+            @MITRA_EVENTS_MANAGEMENT
+          </span>
+          <span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z" /></svg>
+            www.mitraevents.in
+          </span>
+        </div>
+        <p class="footer-address">#1/585, Cochin Bypass, Near Karpagam University, Coimbatore - 641021. <b>Cell : 9894606292 | 9445742696</b></p>
+      </footer>
+    </main>
+  </body>
+</html>

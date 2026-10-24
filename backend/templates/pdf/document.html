@@ -1,127 +1,202 @@
-{% extends "pdf/base.html" %}
-{% load money %}
-{% block title %}
-  <div class="type">{% if kind == "invoice" %}TAX INVOICE{% else %}QUOTATION{% endif %}</div>
-  <div><strong>{% if kind == "invoice" %}{{ doc.number|default:"DRAFT" }}{% else %}{{ doc.number }}{% endif %}</strong></div>
-  {% if kind == "invoice" %}
-    <div class="small">Date: {{ doc.invoice_date|date:"d M Y" }}</div>
-    {% if doc.due_date %}<div class="small">Due: {{ doc.due_date|date:"d M Y" }}</div>{% endif %}
-    {% if doc.status == "CANCELLED" %}<div class="cancelled">CANCELLED</div>{% elif doc.status == "DRAFT" %}<div class="cancelled" style="color:#a16207;border-color:#a16207">DRAFT — NOT A VALID INVOICE</div>{% endif %}
-  {% else %}
-    <div class="small">Date: {{ doc.date|date:"d M Y" }}</div>
-    {% if doc.valid_until %}<div class="small">Valid until: {{ doc.valid_until|date:"d M Y" }}</div>{% endif %}
-  {% endif %}
-{% endblock %}
+{% load money %}<!doctype html>
+{% comment %}
+  Invoice / quotation PDF on the Mitra letterpad (design: design/quotation-template.html).
+  Rendered by WeasyPrint. The header and footer are fixed boxes, so they repeat on every page.
+  Footer contact details are printed letterpad text, as on the client's paper letterpad.
+{% endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% if kind == "invoice" %}Invoice {{ doc.number|default:"DRAFT" }}{% else %}Quotation {{ doc.number }}{% endif %}</title>
+<style>
+  @font-face { font-family: "Marcellus"; src: url("fonts/Marcellus-Regular.ttf"); }
+  @font-face { font-family: "Great Vibes"; src: url("fonts/GreatVibes-Regular.ttf"); }
+  @font-face { font-family: "Tinos"; src: url("fonts/Tinos-Regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "Tinos"; src: url("fonts/Tinos-Bold.ttf"); font-weight: 700; }
+  @font-face { font-family: "Roboto"; src: url("fonts/Roboto-Regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "Roboto"; src: url("fonts/Roboto-Medium.ttf"); font-weight: 500; }
 
-{% block content %}
-<div class="parties">
-  <div class="box">
-    <h3>{% if kind == "invoice" %}Bill to{% else %}Prepared for{% endif %}</h3>
-    {% if kind == "invoice" and doc.billing_name %}
-      <strong>{{ doc.billing_name }}</strong><br>
-      <pre>{{ doc.billing_address }}</pre>
-      {% if doc.billing_phone %}Ph: {{ doc.billing_phone|phone }}<br>{% endif %}
-      {% if doc.billing_gstin %}<strong>GSTIN:</strong> {{ doc.billing_gstin }}{% endif %}
-    {% else %}
-      <strong>{{ doc.client.name }}</strong><br>
-      <pre>{{ doc.client.address }}</pre>
-      Ph: {{ doc.client.phone|phone }}<br>
-      {% if doc.client.gstin %}<strong>GSTIN:</strong> {{ doc.client.gstin }}{% endif %}
-    {% endif %}
+  /* Side margins are 0 so the header/footer bands can run edge to edge; the body is padded instead. */
+  @page { size: A4; margin: 38mm 0 40mm 0; }
+
+  :root { --purple: #7a2a96; --ink: #1f1f1f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Roboto", Arial, sans-serif; font-size: 10.6pt; color: var(--ink); }
+  .serif { font-family: "Tinos", "Times New Roman", serif; }
+
+  /* ---------- Header (repeats) ---------- */
+  .header { position: fixed; top: -31mm; left: 4mm; right: 0; height: 25mm;
+            background: #fff; border-bottom: 0.6mm solid var(--purple); }
+  .brand { position: absolute; left: 12mm; top: 2.5mm; }
+  .brand .lotus { width: 27mm; height: auto; vertical-align: middle; }
+  .wordmark { display: inline-block; vertical-align: middle; margin-left: 6mm; font-family: "Marcellus", Georgia, serif; color: var(--purple); line-height: 1; }
+  .wordmark .name { font-size: 12.5mm; letter-spacing: 0.2mm; }
+  /* The letterpad's "i" in Mitra: a dotless i with a tiny lotus as its dot. */
+  .wordmark .i { position: relative; display: inline-block; }
+  .wordmark .i img { position: absolute; left: 50%; top: 1.2mm; width: 4mm; height: auto; margin-left: -2mm; }
+  .wordmark .sub { display: block; margin-top: 0.6mm; padding-left: 2.5mm; font-size: 6.4mm; letter-spacing: 3.2mm; }
+  .gstin { position: absolute; right: 0; top: 0; width: 77mm; height: 19.5mm; }
+  .gstin svg { position: absolute; inset: 0; width: 77mm; height: 19.5mm; }
+  .gstin span { position: absolute; right: 9mm; bottom: 3.4mm; color: #fff; font-family: "Tinos", serif; font-weight: 700; font-size: 3.55mm; }
+  .gstin-gold { position: absolute; right: 0; top: 19.5mm; width: 77mm; height: 5mm;
+                background: linear-gradient(90deg, #8a6a2a, #f3dc8a 45%, #b8902f 75%, #8a6a2a); }
+
+  /* ---------- Footer (repeats) ---------- */
+  .footer { position: fixed; bottom: -27mm; left: 13.5mm; right: 7mm; }
+  .footer-gold { height: 3mm; background: linear-gradient(90deg, #8a6a2a, #f3dc8a 30%, #b8902f 60%, #f3dc8a 85%, #8a6a2a); }
+  .footer-band { height: 10.5mm; background: var(--purple); color: #fff; text-align: center; white-space: nowrap;
+                 font-family: "Tinos", serif; font-weight: 700; font-size: 3.3mm; line-height: 10.5mm; }
+  .footer-band span { margin: 0 2.2mm; }
+  .footer-band svg { width: 3.4mm; height: 3.4mm; vertical-align: -0.6mm; margin-right: 1.2mm; }
+  .footer-address { margin: 1.6mm 0 0; text-align: center; color: var(--purple); font-family: "Tinos", serif; font-size: 2.85mm; }
+  .footer-address b { font-size: 3.3mm; }
+
+  /* ---------- Body ---------- */
+  .content { padding: 0 16mm 0 16mm; }
+  .meta { width: 100%; border-collapse: collapse; line-height: 1.3; }
+  .meta td { vertical-align: top; padding: 0; }
+  .meta .event { text-align: center; }
+  .meta .doc { text-align: right; font-size: 9pt; }
+  .doc-type { font-family: "Tinos", serif; font-weight: 700; font-size: 11pt; color: var(--purple); letter-spacing: 0.4mm; }
+  .stamp { display: inline-block; margin-top: 1.5mm; padding: 0.5mm 2mm; border: 0.4mm solid #b91c1c; color: #b91c1c; font-weight: 500; font-size: 8pt; }
+  .stamp.draft { border-color: #a16207; color: #a16207; }
+  .party-extra { font-size: 9pt; color: #555; }
+
+  /* One photo, or two side by side (the second to the right of the first). */
+  /* Equal tiles across the full text width; a single photo takes the left half. */
+  table.photos { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 9mm; table-layout: fixed; }
+  table.photos td { width: 50%; padding: 0 3mm 0 0; vertical-align: top; }
+  table.photos td + td { padding: 0 0 0 3mm; }
+  .photo { display: block; width: 100%; height: 50mm; object-fit: cover; border: 0.25mm solid #e4e1e6; border-radius: 1.2mm; }
+
+  /* Items and totals share one table so every "--" and amount lines up in the same columns. */
+  table.bill { width: 100%; border-collapse: collapse; margin-top: 11mm; }
+  table.bill td { padding: 0; vertical-align: top; }
+  table.bill col.dash-col { width: 12mm; }
+  table.bill col.amt-col { width: 32mm; }
+  .dash { text-align: center; color: #555; }
+  .amt { text-align: right; font-variant-numeric: tabular-nums; }
+
+  tr.item td { padding: 3.2mm 0; border-bottom: 0.2mm solid #ececec; page-break-inside: avoid; }
+  tr.item:first-child td { padding-top: 0; }
+  tr.item td.desc { padding-right: 8mm; line-height: 1.35; }
+  .desc-sub { display: block; margin-top: 1.2mm; font-size: 8pt; color: #777; }
+  .amt.blank { color: #444; }
+
+  /* Totals block: a gap and a rule after the items, then evenly spaced rows. */
+  tr.gap td { height: 6mm; border: 0; }
+  tr.sum td { padding: 1.1mm 0; }
+  tr.sum td.label { text-align: right; padding-right: 6mm; }
+  tr.sum.grand td { font-weight: 500; }
+  /* A short rule over the amount only, above Total and Balance. */
+  tr.sum.rule td { padding-top: 2mm; }
+  tr.sum.rule td.amt { border-top: 0.25mm solid #bdbdbd; }
+  tr.sum.balance td { font-size: 11.5pt; padding-top: 2.2mm; }
+  tr.words td { padding-top: 3.5mm; text-align: right; font-size: 8.5pt; font-style: italic; color: #555; }
+
+  .notes { margin-top: 9mm; font-size: 8.5pt; color: #333; page-break-inside: avoid; }
+  .notes h3 { margin: 0 0 1mm; font-size: 8pt; font-weight: 500; color: var(--purple); letter-spacing: 0.3mm; text-transform: uppercase; }
+  .notes pre { margin: 0 0 3mm; font-family: inherit; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">
+    <img class="lotus" src="lotus.png" alt="">
+    <div class="wordmark"><span class="name">M<span class="i">ı<img src="lotus.png" alt=""></span>tra Events</span><span class="sub">management</span></div>
   </div>
-  <div class="box">
-    <h3>Details</h3>
-    Place of supply: {{ place_of_supply }}<br>
-    {% if doc.booking %}Event: {{ doc.booking.title }}<br>Event date: {{ doc.booking.event_date|date:"d M Y" }} · {{ doc.booking.venue }}<br>Booking: {{ doc.booking.number }}{% endif %}
+  <div class="gstin">
+    <svg viewBox="0 0 77 19.5" preserveAspectRatio="none"><polygon points="17.7,0 77,0 77,19.5 0,19.5" fill="#7a2a96"/></svg>
+    <span>GSTIN - {{ company.gstin|default:"33AULPG4138N1ZE" }}</span>
   </div>
+  <div class="gstin-gold"></div>
 </div>
 
-<table class="items">
-  <thead>
+<div class="footer">
+  <div class="footer-gold"></div>
+  <div class="footer-band">
+    <span><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2" fill="#fff"/><path d="m3 6.5 9 6.5 9-6.5" fill="none" stroke="#7a2a96" stroke-width="2"/></svg>mitraeventsmanagement@gmail.com</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#fff"/></svg>@MITRA_EVENTS_MANAGEMENT</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z"/></svg>www.mitraevents.in</span>
+  </div>
+  <p class="footer-address">#1/585, Cochin Bypass, Near Karpagam University, Coimbatore - 641021. <b>Cell : 9894606292 | 9445742696</b></p>
+</div>
+
+<div class="content">
+  <!-- Client · event · document number -->
+  <table class="meta">
     <tr>
-      <th style="width:4%">#</th>
-      <th>Description</th>
-      <th style="width:8%">SAC</th>
-      <th class="num" style="width:7%">Qty</th>
-      <th class="num" style="width:11%">Rate</th>
-      <th class="num" style="width:9%">Disc.</th>
-      <th class="num" style="width:12%">Taxable</th>
-      <th class="num" style="width:6%">GST</th>
-      <th class="num" style="width:12%">Amount</th>
+      <td style="width:38%">
+        <div class="doc-type">CLIENT</div>
+        {{ party_name }}<br>
+        Ph {{ party_phone }}
+        {% if kind == "invoice" and doc.billing_gstin %}<br><span class="party-extra">GSTIN {{ doc.billing_gstin }}</span>{% elif doc.client.gstin %}<br><span class="party-extra">GSTIN {{ doc.client.gstin }}</span>{% endif %}
+      </td>
+      <td class="event" style="width:34%">
+        {% if venue or event_dates %}<div class="doc-type">EVENT</div>{% endif %}
+        {% if venue %}{{ venue }}<br>{% endif %}
+        {{ event_dates }}
+      </td>
+      <td class="doc">
+        {% if kind == "invoice" %}
+          {# Invoices show no number/date block (owner's choice); only a draft/cancelled warning. #}
+          {% if doc.status == "CANCELLED" %}<span class="stamp">CANCELLED</span>{% elif doc.status == "DRAFT" %}<span class="stamp draft">DRAFT — NOT A VALID INVOICE</span>{% endif %}
+        {% else %}
+          <div class="doc-type">QUOTATION</div>
+          {{ doc.number }}
+        {% endif %}
+      </td>
     </tr>
-  </thead>
-  <tbody>
+  </table>
+
+  {% if photos %}<table class="photos"><tr>{% for src in photos %}<td><img class="photo" src="{{ src }}" alt=""></td>{% endfor %}{% if photos|length == 1 %}<td></td>{% endif %}</tr></table>{% endif %}
+
+  <!-- Items: description · "--" · amount (before GST); unpriced items show a dashed line -->
+  <table class="bill">
+    <colgroup><col><col class="dash-col"><col class="amt-col"></colgroup>
     {% for i in items %}
-    <tr>
-      <td>{{ forloop.counter }}</td>
-      <td>{{ i.description }}</td>
-      <td>{{ i.sac }}</td>
-      <td class="num">{{ i.quantity|floatformat:"-2" }} {{ i.unit }}</td>
-      <td class="num">{{ i.rate|inr }}</td>
-      <td class="num">{% if i.discount %}{{ i.discount|inr }}{% else %}—{% endif %}</td>
-      <td class="num">{{ i.taxable_amount|inr }}</td>
-      <td class="num">{{ i.tax_rate|floatformat:"-2" }}%</td>
-      <td class="num">{{ i.amount|inr }}</td>
+    <tr class="item">
+      <td class="desc">
+        {{ forloop.counter }}. {{ i.description }}
+        <span class="desc-sub">{% if i.quantity != 1 or i.unit|lower != "nos" %}{{ i.quantity|floatformat:"-2" }} {{ i.unit }} × {{ i.rate|floatformat:2 }}{% if i.discount %} − {{ i.discount|floatformat:2 }} discount{% endif %} · {% endif %}{% if i.sac %}SAC {{ i.sac }} · {% endif %}GST {{ i.tax_rate|floatformat:"-2" }}%</span>
+      </td>
+      <td class="dash">--</td>
+      <td class="amt{% if not i.taxable_amount %} blank{% endif %}">{% if i.taxable_amount %}{{ i.taxable_amount|floatformat:2 }}{% else %}------------------{% endif %}</td>
     </tr>
     {% endfor %}
-  </tbody>
-</table>
 
-<table class="totals">
-  <tr><td>Taxable value</td><td class="right">₹ {{ doc.taxable_total|inr }}</td></tr>
-  {% if intra_state %}
-    <tr><td>CGST</td><td class="right">₹ {{ doc.cgst_total|inr }}</td></tr>
-    <tr><td>SGST</td><td class="right">₹ {{ doc.sgst_total|inr }}</td></tr>
-  {% else %}
-    <tr><td>IGST</td><td class="right">₹ {{ doc.igst_total|inr }}</td></tr>
-  {% endif %}
-  {% if doc.round_off %}<tr><td>Round off</td><td class="right">{{ doc.round_off|floatformat:2 }}</td></tr>{% endif %}
-  <tr class="grand"><td>Total</td><td class="right">₹ {{ doc.total|inr }}</td></tr>
-  {% if kind == "invoice" and doc.amount_paid %}
-    <tr><td>Paid</td><td class="right">₹ {{ doc.amount_paid|inr }}</td></tr>
-    <tr><td><strong>Balance due</strong></td><td class="right"><strong>₹ {{ doc.balance_due|inr }}</strong></td></tr>
-  {% endif %}
-</table>
-<div class="words">{{ amount_words }}</div>
-
-<table class="tax">
-  <thead>
-    <tr>
-      <th>GST rate</th><th class="right">Taxable</th>
-      {% if intra_state %}<th class="right">CGST</th><th class="right">SGST</th>{% else %}<th class="right">IGST</th>{% endif %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for r in tax_rows %}
-    <tr>
-      <td>{{ r.rate|floatformat:"-2" }}%</td><td class="right">{{ r.taxable|inr }}</td>
-      {% if intra_state %}<td class="right">{{ r.cgst|inr }}</td><td class="right">{{ r.sgst|inr }}</td>{% else %}<td class="right">{{ r.igst|inr }}</td>{% endif %}
-    </tr>
+    <tr class="gap"><td colspan="3"></td></tr>
+    <tr class="sum"><td class="label">Amount rs</td><td class="dash">--</td><td class="amt">{{ doc.taxable_total|floatformat:2 }}</td></tr>
+    {% for r in tax_rows %}{% if r.cgst or r.sgst or r.igst %}
+      {% if intra_state %}
+        <tr class="sum"><td class="label">CGST @ {{ r.rate|half_rate }}% rs</td><td class="dash">--</td><td class="amt">{{ r.cgst|floatformat:2 }}</td></tr>
+        <tr class="sum"><td class="label">SGST @ {{ r.rate|half_rate }}% rs</td><td class="dash">--</td><td class="amt">{{ r.sgst|floatformat:2 }}</td></tr>
+      {% else %}
+        <tr class="sum"><td class="label">IGST @ {{ r.rate|floatformat:"-2" }}% rs</td><td class="dash">--</td><td class="amt">{{ r.igst|floatformat:2 }}</td></tr>
+      {% endif %}
+    {% endif %}{% endfor %}
+    {% if doc.round_off %}<tr class="sum"><td class="label">Round off rs</td><td class="dash">--</td><td class="amt">{{ doc.round_off|floatformat:2 }}</td></tr>{% endif %}
+    {% if doc.total != doc.taxable_total %}<tr class="sum grand rule"><td class="label">Total rs</td><td class="dash">--</td><td class="amt">{{ doc.total|floatformat:2 }}</td></tr>{% endif %}
+    {% for p in payments %}
+      <tr class="sum"><td class="label">{{ p.label }} rs</td><td class="dash">--</td><td class="amt">{{ p.amount|floatformat:2 }}</td></tr>
     {% endfor %}
-  </tbody>
-</table>
+    {% if payments %}<tr class="sum grand rule balance"><td class="label">Balance rs</td><td class="dash">--</td><td class="amt">{{ balance|floatformat:2 }}</td></tr>{% endif %}
+    {% if kind == "invoice" %}<tr class="words"><td colspan="3">{{ amount_words }}</td></tr>{% endif %}
+  </table>
 
-<div class="foot">
-  <div class="box">
-    <h3>Payment details</h3>
-    {% if company.bank_name %}
-      Bank: {{ company.bank_name }}{% if company.bank_branch %}, {{ company.bank_branch }}{% endif %}<br>
-      A/c name: {{ company.bank_account_name|default:company.legal_name }}<br>
-      A/c no: {{ company.bank_account_number }} · IFSC: {{ company.bank_ifsc }}<br>
+  {% if doc.notes or kind == "invoice" and company.bank_name or kind == "invoice" and company.upi_id %}
+  <div class="notes">
+    {% if doc.notes %}<h3>Notes</h3><pre>{{ doc.notes }}</pre>{% endif %}
+    {% if kind == "invoice" and company.bank_name %}
+      <h3>Payment details</h3>
+      <pre>Bank: {{ company.bank_name }}{% if company.bank_branch %}, {{ company.bank_branch }}{% endif %} · A/c name: {{ company.bank_account_name|default:company.legal_name }} · A/c no: {{ company.bank_account_number }} · IFSC: {{ company.bank_ifsc }}{% if company.upi_id %} · UPI: {{ company.upi_id }}{% endif %}</pre>
+    {% elif kind == "invoice" and company.upi_id %}
+      <h3>Payment details</h3><pre>UPI: {{ company.upi_id }}</pre>
     {% endif %}
-    {% if company.upi_id %}UPI: {{ company.upi_id }}{% endif %}
-    {% if not company.bank_name and not company.upi_id %}<span class="muted">Add bank / UPI details in Accounts → Settings.</span>{% endif %}
   </div>
-  <div class="box">
-    <h3>Terms</h3>
-    <pre class="small">{{ doc.terms }}</pre>
-    {% if doc.notes %}<p class="small"><strong>Notes:</strong> {{ doc.notes }}</p>{% endif %}
-  </div>
-</div>
+  {% endif %}
 
-<div class="sign">
-  For <strong>{{ company.trade_name|default:company.legal_name }}</strong><br><br><br>
-  {{ company.authorised_signatory|default:"Authorised signatory" }}
 </div>
-{% if kind == "invoice" %}<p class="small muted center">This is a computer-generated invoice.</p>{% endif %}
-{% endblock %}
+</body>
+</html>

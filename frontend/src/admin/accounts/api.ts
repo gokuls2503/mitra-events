@@ -124,6 +124,8 @@ export interface Quotation extends SalesDoc {
   date: string
   valid_until: string | null
   status: QuotationStatus
+  /** Up to two photos printed side by side on the PDF. */
+  images: { id: number; image: string }[]
 }
 
 export interface Allocation {
@@ -328,6 +330,12 @@ export const accounts = {
   deleteLedger: (id: number) => api.delete(`/accounts/ledgers/${id}/`),
   saveQuotation: (data: Body & { id?: number }) => save<Quotation>('quotations', data),
   deleteQuotation: (id: number) => api.delete(`/accounts/quotations/${id}/`),
+  uploadQuotationImage: (id: number, file: Blob, name: string) => {
+    const form = new FormData()
+    form.append('image', file, name)
+    return api.post(`/accounts/quotations/${id}/images/`, form)
+  },
+  deleteQuotationImage: (id: number, imageId: number) => api.delete(`/accounts/quotations/${id}/images/${imageId}/`),
   quotationStatus: ({ id, status }: { id: number; status: QuotationStatus }) => post<Quotation>(`/accounts/quotations/${id}/set-status/`, { status }),
   convertQuotation: (id: number) => post<Invoice>(`/accounts/quotations/${id}/convert/`),
   saveInvoice: (data: Body & { id?: number }) => save<Invoice>('invoices', data),

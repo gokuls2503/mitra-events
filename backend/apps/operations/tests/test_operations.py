@@ -198,6 +198,16 @@ class TestDashboard:
         assert data["counts"]["new_leads"] == 1 and data["counts"]["unassigned_leads"] == 1
         assert [e["title"] for e in data["attention"]["events_without_coordinator"]] == ["Event +2", "Later"]
 
+    def test_manager_sees_unassigned_tasks(self, team, client_obj):
+        b = booking(client_obj, days=5, title="Wedding")
+        Task.objects.create(title="Book lights", booking=b, due_date=TODAY)
+        Task.objects.create(title="No date", booking=b)
+        Task.objects.create(title="Owned", booking=b, assigned_to=team["staff"], due_date=TODAY)
+        Task.objects.create(title="Finished", due_date=TODAY, status=Task.Status.DONE)
+        data = api(team["manager"]).get("/api/v1/dashboard/").data
+        assert data["attention"]["unassigned_tasks_count"] == 2
+        assert [(t["title"], t["booking_title"]) for t in data["attention"]["unassigned_tasks"]] == [("Book lights", "Wedding"), ("No date", "Wedding")]
+
     def test_staff_dashboard_is_personal(self, team, client_obj):
         mine = booking(client_obj, days=1)
         EventAssignment.objects.create(booking=mine, staff=team["staff"], role="Decor")
@@ -231,3 +241,43 @@ def test_user_with_event_history_cannot_be_hard_deleted(team):
     EventAssignment.objects.create(booking=booking(c), staff=team["staff"], role="x")
     with pytest.raises(ProtectedError):
         team["staff"].delete()
+
+
+@pytest.mark.django_db
+class TestVendorUpcomingJobs:
+    def setup_jobs(self, client_obj):
+        v = vendor()
+        jobs = {
+            "past": booking(client_obj, days=-15),
+            "in_progress": booking(client_obj, days=-1, end_days=1),  # multi-day, started yesterday
+            "today": booking(client_obj, days=0),
+            "future": booking(client_obj, days=30),
+            "cancelled_job": booking(client_obj, days=5),
+            "cancelled_event": booking(client_obj, days=6),
+        }
+        for key, b in jobs.items():
+            EventAssignment.objects.create(
+                booking=b, vendor=v, role="Photos", status="CANCELLED" if key == "cancelled_job" else "CONFIRMED"
+            )
+        jobs["cancelled_event"].status = Booking.Status.CANCELLED
+        jobs["cancelled_event"].save()
+        return v, jobs
+
+    def test_count_and_list_agree_and_include_events_in_progress(self, team, client_obj):
+        v, jobs = self.setup_jobs(client_obj)
+        c = api(team["manager"])
+        count = next(r for r in c.get("/api/v1/ops/vendors/").data["results"] if r["id"] == v.pk)["upcoming_jobs"]
+        listed = {a["booking"] for a in c.get(f"/api/v1/ops/assignments/?vendor={v.pk}&upcoming=true").data}
+        assert listed == {jobs["in_progress"].pk, jobs["today"].pk, jobs["future"].pk}
+        assert count == len(listed) == 3
+        # The full history still lists every job.
+        assert len(c.get(f"/api/v1/ops/assignments/?vendor={v.pk}").data) == 6
+
+    def test_add_job_for_vendor(self, team, client_obj):
+        v = vendor()
+        b = booking(client_obj, days=12)
+        res = api(team["manager"]).post(
+            "/api/v1/ops/assignments/", {"booking": b.pk, "staff": None, "vendor": v.pk, "role": "Mandap flowers", "agreed_cost": "8000"}, format="json"
+        )
+        assert res.status_code == 201, res.data
+        assert [a["id"] for a in api(team["manager"]).get(f"/api/v1/ops/assignments/?vendor={v.pk}&upcoming=true").data] == [res.data["id"]]

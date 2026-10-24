@@ -27,3 +27,13 @@ def phone(value):
     """'+919876543210' → '+91 98765 43210'."""
     m = re.fullmatch(r"\+91(\d{5})(\d{5})", value or "")
     return f"+91 {m[1]} {m[2]}" if m else value
+
+
+@register.filter
+def half_rate(value):
+    """GST rate split into CGST + SGST halves: 18 → '9', 5 → '2.5'."""
+    try:
+        half = Decimal(str(value)) / 2
+    except (InvalidOperation, TypeError, ValueError):
+        return value
+    return f"{half.normalize():f}"

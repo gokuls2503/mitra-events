@@ -249,6 +249,22 @@ class Quotation(SalesDocument):
         return self.number
 
 
+class QuotationImage(models.Model):
+    """Up to two photos printed on the quotation PDF, side by side under the client details."""
+
+    MAX_PER_QUOTATION = 2
+
+    quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(upload_to="quotations/%Y/%m/")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"Image for {self.quotation}"
+
+
 class QuotationItem(LineItem):
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name="items")
 
