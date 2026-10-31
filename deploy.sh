@@ -89,6 +89,8 @@ sudo -u "$APP_USER" bash -c "
   .venv/bin/python manage.py collectstatic --noinput -v 0
   .venv/bin/python manage.py seed_materials   # adds missing starter materials only
   mkdir -p media
+  # Stamps gallery photos not yet watermarked; originals go to gallery_originals/. A bad photo mustn't stop the deploy.
+  .venv/bin/python manage.py watermark_gallery || echo 'WARNING: watermark_gallery failed, some photos may be unstamped'
 "
 
 cat > /etc/systemd/system/mitra-backend.service <<UNIT

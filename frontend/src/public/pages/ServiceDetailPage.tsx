@@ -611,9 +611,12 @@ function IconList({ items }: { items: { icon: LucideIcon; text: ReactNode }[] })
 /** A photo grid; any photo opens full screen, with arrows, swipe and the keyboard to move through them. */
 function Album({ photos }: { photos: { src: string; alt: string }[] }) {
   const [open, setOpen] = useState<number | null>(null)
+  const [mounted, setMounted] = useState(false) // no document.body while prerendering
   const touchX = useRef<number | null>(null)
   const go = (step: number) => setOpen((i) => (i === null ? i : (i + step + photos.length) % photos.length))
   const isOpen = open !== null
+
+  useEffect(() => setMounted(true), [])
 
   // While open: Esc closes, arrow keys move, and the page behind doesn't scroll.
   useEffect(() => {
@@ -643,71 +646,72 @@ function Album({ photos }: { photos: { src: string; alt: string }[] }) {
         ))}
       </ul>
       {/* On the page body: inside the scroll-in animation, "fixed" would be measured against that box. */}
-      {createPortal(
-        <AnimatePresence>
-          {open !== null && (
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Photo viewer"
-              className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setOpen(null)}
-              onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
-              onTouchEnd={(e) => {
-                if (touchX.current === null) return
-                const dx = e.changedTouches[0].clientX - touchX.current
-                touchX.current = null
-                if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
-              }}
-            >
-              <img src={photos[open].src} alt={photos[open].alt} onClick={(e) => e.stopPropagation()} className="max-h-[85vh] max-w-full rounded-lg object-contain" />
-              <p className="absolute bottom-5 text-sm text-white/80">
-                {open + 1} / {photos.length}
-              </p>
-              <button
-                type="button"
+      {mounted &&
+        createPortal(
+          <AnimatePresence>
+            {open !== null && (
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Photo viewer"
+                className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 onClick={() => setOpen(null)}
-                aria-label="Close"
-                className="absolute top-4 right-4 grid size-11 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25"
+                onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
+                onTouchEnd={(e) => {
+                  if (touchX.current === null) return
+                  const dx = e.changedTouches[0].clientX - touchX.current
+                  touchX.current = null
+                  if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
+                }}
               >
-                <X className="size-6" />
-              </button>
-              {photos.length > 1 &&
-                [
-                  {
-                    step: -1,
-                    Icon: ChevronLeft,
-                    label: 'Previous photo',
-                    side: 'left-3',
-                  },
-                  {
-                    step: 1,
-                    Icon: ChevronRight,
-                    label: 'Next photo',
-                    side: 'right-3',
-                  },
-                ].map(({ step, Icon, label, side }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    aria-label={label}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      go(step)
-                    }}
-                    className={`absolute top-1/2 ${side} grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25`}
-                  >
-                    <Icon className="size-6" />
-                  </button>
-                ))}
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body,
-      )}
+                <img src={photos[open].src} alt={photos[open].alt} onClick={(e) => e.stopPropagation()} className="max-h-[85vh] max-w-full rounded-lg object-contain" />
+                <p className="absolute bottom-5 text-sm text-white/80">
+                  {open + 1} / {photos.length}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setOpen(null)}
+                  aria-label="Close"
+                  className="absolute top-4 right-4 grid size-11 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25"
+                >
+                  <X className="size-6" />
+                </button>
+                {photos.length > 1 &&
+                  [
+                    {
+                      step: -1,
+                      Icon: ChevronLeft,
+                      label: 'Previous photo',
+                      side: 'left-3',
+                    },
+                    {
+                      step: 1,
+                      Icon: ChevronRight,
+                      label: 'Next photo',
+                      side: 'right-3',
+                    },
+                  ].map(({ step, Icon, label, side }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-label={label}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        go(step)
+                      }}
+                      className={`absolute top-1/2 ${side} grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25`}
+                    >
+                      <Icon className="size-6" />
+                    </button>
+                  ))}
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </>
   )
 }
