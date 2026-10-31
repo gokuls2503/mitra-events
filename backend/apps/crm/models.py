@@ -131,6 +131,7 @@ class LeadActivity(models.Model):
         MEETING = "MEETING", "Meeting / visit"
         FOLLOW_UP = "FOLLOW_UP", "Follow-up"
         CONVERTED = "CONVERTED", "Converted to booking"
+        QUOTATION = "QUOTATION", "Quotation"
 
     MANUAL_KINDS = [Kind.NOTE, Kind.CALL, Kind.WHATSAPP, Kind.MEETING]
 

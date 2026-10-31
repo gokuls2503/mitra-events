@@ -10,14 +10,17 @@ public.register("website/packages", views.PublicPackageViewSet, basename="public
 public.register("website/gallery-categories", views.PublicGalleryCategoryViewSet, basename="public-gallery-category")
 public.register("website/gallery", views.PublicGalleryViewSet, basename="public-gallery")
 public.register("website/testimonials", views.PublicTestimonialViewSet, basename="public-testimonial")
+public.register("website/faqs", views.PublicFaqViewSet, basename="public-faq")
 
 cms = DefaultRouter()
 cms.include_root_view = False
 cms.register("cms/services", views.CmsServiceViewSet, basename="cms-service")
+cms.register("cms/service-images", views.CmsServiceImageViewSet, basename="cms-service-image")
 cms.register("cms/packages", views.CmsPackageViewSet, basename="cms-package")
 cms.register("cms/gallery-categories", views.CmsGalleryCategoryViewSet, basename="cms-gallery-category")
 cms.register("cms/gallery", views.CmsGalleryViewSet, basename="cms-gallery")
 cms.register("cms/testimonials", views.CmsTestimonialViewSet, basename="cms-testimonial")
+cms.register("cms/faqs", views.CmsFaqViewSet, basename="cms-faq")
 cms.register("cms/estimator/event-types", views.CmsEstimatorEventTypeViewSet, basename="cms-estimator-event-type")
 cms.register("cms/estimator/tiers", views.CmsEstimatorTierViewSet, basename="cms-estimator-tier")
 cms.register("cms/estimator/addons", views.CmsEstimatorAddonViewSet, basename="cms-estimator-addon")

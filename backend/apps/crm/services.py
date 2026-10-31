@@ -108,6 +108,25 @@ def convert_to_booking(lead: Lead, *, user=None, client_data: dict | None = None
     if lead.status == Lead.Status.LOST:
         raise ValidationError("Re-open this lost lead before converting it.")
 
+    client = client_for_lead(lead, user=user, client_data=client_data)
+    booking = create_booking(client=client, lead=lead, user=user, **booking_data)
+    # A quotation made while this was still a lead carries on as the booking's quotation.
+    lead.quotations.filter(booking__isnull=True).update(booking=booking)
+
+    lead.client = client
+    lead.status = Lead.Status.WON
+    lead.status_changed_at = timezone.now()
+    lead.lost_reason = ""
+    lead.updated_by = user
+    lead.save()
+    lead.follow_ups.filter(completed_at__isnull=True).delete()
+    record(lead, LeadActivity.Kind.CONVERTED, f"Booking {booking.number} created for {booking.event_date:%d %b %Y}", user)
+    return booking
+
+
+def client_for_lead(lead: Lead, *, user=None, client_data: dict | None = None) -> Client:
+    """The lead's client: already linked, else found by phone, else created from the lead.
+    Linking it here means a later quotation or booking for the same lead never makes a second client."""
     client_data = {k: v for k, v in (client_data or {}).items() if v not in (None, "")}
     client = lead.client or Client.objects.filter(phone=lead.phone).first()
     if client is None:
@@ -124,18 +143,28 @@ def convert_to_booking(lead: Lead, *, user=None, client_data: dict | None = None
             setattr(client, field, value)
         client.updated_by = user
         client.save()
+    if lead.client_id != client.id:
+        lead.client = client
+        lead.save(update_fields=["client", "updated_at"])
+    return client
 
-    booking = create_booking(client=client, lead=lead, user=user, **booking_data)
 
-    lead.client = client
-    lead.status = Lead.Status.WON
-    lead.status_changed_at = timezone.now()
-    lead.lost_reason = ""
-    lead.updated_by = user
-    lead.save()
-    lead.follow_ups.filter(completed_at__isnull=True).delete()
-    record(lead, LeadActivity.Kind.CONVERTED, f"Booking {booking.number} created for {booking.event_date:%d %b %Y}", user)
-    return booking
+# Stages a new quotation moves a lead on from; later ones (negotiation, won, lost) stay as they are.
+BEFORE_QUOTATION = (Lead.Status.NEW, Lead.Status.CONTACTED, Lead.Status.MEETING)
+
+
+def quotation_created(lead: Lead, number: str, *, user=None) -> None:
+    """Called by accounting when a quotation is saved for this lead. Saving is only preparing it,
+    so the lead stays at its stage; it moves on when the quotation is marked as sent."""
+    record(lead, LeadActivity.Kind.QUOTATION, f"Quotation {number} created", user)
+
+
+@transaction.atomic
+def quotation_sent(lead: Lead, number: str, *, user=None) -> None:
+    """Called by accounting when a quotation for this lead is marked as sent to the client."""
+    record(lead, LeadActivity.Kind.QUOTATION, f"Quotation {number} sent", user)
+    if lead.status in BEFORE_QUOTATION and not hasattr(lead, "booking"):
+        change_status(lead, Lead.Status.QUOTATION_SENT, user=user)
 
 
 def create_booking(*, client: Client, user=None, **data) -> Booking:

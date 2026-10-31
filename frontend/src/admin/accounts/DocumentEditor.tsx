@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 
+import { EVENT_TYPE_LABELS, type EventType } from '@/public/api'
 import { todayISO } from '@/shared/dates'
+import { prettyPhone } from '@/shared/format'
 import { Button } from '@/shared/ui/Button'
 import { SelectField, TextAreaField } from '@/shared/ui/Field'
 import { DateField } from '@/shared/ui/DateField'
@@ -24,6 +26,7 @@ interface Values {
   second_date: string // due date (invoice) or valid until (quotation)
   place_of_supply: string
   booking: string
+  event_type: EventType | '' // quotations only
   notes: string
   terms: string
   items: Item[]
@@ -33,6 +36,8 @@ export interface Prefill {
   client?: Pick<Client, 'id' | 'name' | 'phone'> | null
   booking?: number | null
   items?: Item[]
+  /** A quotation started from a lead: linked to it, and without a client the lead's client is found or created on save. */
+  lead?: { id: number; name: string; phone: string; eventTypes?: string }
 }
 
 export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoice | Quotation; prefill?: Prefill }) {
@@ -72,6 +77,7 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
       second_date: secondDate,
       place_of_supply: doc?.place_of_supply ?? settings?.state_code ?? '33',
       booking: String(doc?.booking ?? prefill?.booking ?? ''),
+      event_type: doc && 'event_type' in doc ? doc.event_type : '',
       notes: doc?.notes ?? '',
       terms: doc?.terms ?? '',
       items: doc?.items.map((i) => ({ ...i, tax_rate: String(Number(i.tax_rate)) })) ?? prefill?.items ?? [blankItem()],
@@ -83,13 +89,28 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
   // Controlled: the event list loads after the form, and an uncontrolled <select> would show
   // the first option instead of the pre-filled event.
   const bookingValue = useWatch({ control, name: 'booking' })
+  const eventType = useWatch({ control, name: 'event_type' })
   const intra = place === (settings?.state_code ?? '33')
+
+  // Picking another event type also renames the first line when it still reads "<old type> decoration…".
+  const enquiryTypes = prefill?.lead?.eventTypes
+  const changeEventType = (next: EventType | '') => {
+    const label = (t: EventType | '') => (t ? EVENT_TYPE_LABELS[t] : enquiryTypes || '')
+    const [before, after] = [label(eventType), label(next)]
+    const first = items[0]?.description ?? ''
+    if (before && after && first.startsWith(`${before} decoration`)) setValue('items.0.description', after + first.slice(before.length), { shouldDirty: true })
+    setValue('event_type', next, { shouldDirty: true })
+  }
   const totals = previewTotals(items, intra)
+
+  const lead = doc ? undefined : prefill?.lead
+  const canSave = Boolean(client || lead)
 
   const submit = (v: Values) => {
     const body: Record<string, unknown> = {
       id: doc?.id,
       client: client?.id,
+      ...(lead && { lead: lead.id }),
       booking: v.booking ? Number(v.booking) : null,
       place_of_supply: v.place_of_supply,
       notes: v.notes,
@@ -101,6 +122,7 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
       if (v.second_date) body.due_date = v.second_date
     } else {
       body.date = v.date
+      body.event_type = v.event_type
       if (v.second_date) body.valid_until = v.second_date
     }
     save.mutate(body, {
@@ -115,6 +137,8 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
           }
           void queryClient.invalidateQueries({ queryKey: ['accounts'] })
         }
+        // The lead now has a client, a new stage and a timeline entry.
+        if (lead) void queryClient.invalidateQueries({ queryKey: ['crm'] })
         navigate(`/admin/accounts/${kind}s/${saved.id}`)
       },
     })
@@ -128,12 +152,20 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
       <section className="grid gap-4 rounded-xl border border-stone-200 bg-white p-5 sm:grid-cols-2 lg:grid-cols-3">
         <div className="sm:col-span-2 lg:col-span-1">
           <ClientPicker value={client} onChange={setClient} disabled={!!doc} />
+          {lead && !client && (
+            <p className="mt-2 rounded-lg bg-gold-100 px-3 py-2 text-sm text-gold-700">
+              From lead <span className="font-medium">{lead.name}</span> ({prettyPhone(lead.phone)}). They'll be added as a client when you save, or pick an existing
+              client above.
+            </p>
+          )}
         </div>
         <SelectField
           label="Event (optional)"
-          disabled={!client}
+          // A lead's quotation often comes before any booking: it's linked to the booking when the lead is converted.
+          disabled={!client && !lead}
+          hint={lead && !bookingValue ? "Quoting before booking is fine. It's linked to the event when this lead becomes a booking." : undefined}
           options={[
-            { value: '', label: client ? 'Not linked to an event' : 'Choose a client first' },
+            { value: '', label: lead ? 'No event yet (before booking)' : client ? 'Not linked to an event' : 'Choose a client first' },
             ...(client ? bookings?.results ?? [] : []).map((b) => ({ value: String(b.id), label: `${b.number} · ${b.title}` })),
           ]}
           value={bookingValue}
@@ -160,6 +192,18 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
             />
           )}
         />
+        {kind === 'quotation' && (
+          <SelectField
+            label="Event type"
+            hint="Printed under EVENT on the quotation."
+            options={[
+              { value: '', label: enquiryTypes ? `As in the enquiry (${enquiryTypes})` : 'Not specified' },
+              ...Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => ({ value, label })),
+            ]}
+            value={eventType}
+            onChange={(e) => changeEventType(e.target.value as EventType | '')}
+          />
+        )}
       </section>
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
@@ -257,12 +301,12 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
 
       <FormError error={save.error ?? photoSync.error} />
       {photoSync.error != null && <p className="text-sm text-amber-700">The quotation was saved, but an image couldn't be uploaded. Try saving again.</p>}
-      {!client && <p className="text-sm text-amber-700">Choose a client to save.</p>}
+      {!canSave && <p className="text-sm text-amber-700">Choose a client to save.</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!client} loading={save.isPending || photoSync.busy}>
+        <Button type="submit" disabled={!canSave} loading={save.isPending || photoSync.busy}>
           {doc ? 'Save changes' : kind === 'invoice' ? 'Save draft invoice' : 'Save quotation'}
         </Button>
       </div>

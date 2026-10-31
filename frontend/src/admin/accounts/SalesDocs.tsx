@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { ArrowLeft, CheckCircle2, Plus, Search } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
 import { daysUntil, fmtDate } from '@/shared/dates'
@@ -9,7 +9,7 @@ import { Button } from '@/shared/ui/Button'
 import { Modal } from '@/shared/ui/Modal'
 import { FullPageSpinner } from '@/shared/ui/Spinner'
 
-import { useBooking } from '../crm/api'
+import { useBooking, useLead } from '../crm/api'
 import { EmptyState, FormError, Pagination, QueryState, TABLE, TABLE_WRAP, THEAD } from '../kit'
 import {
   accounts,
@@ -67,7 +67,7 @@ export function InvoicesPage() {
   const [filter, setFilter] = useState(params.get('filter') ?? '')
   const [page, setPage] = useState(1)
   const statusFilter = filter === 'open' ? { open: true } : filter === 'overdue' ? { overdue: true } : { status: filter }
-  const { data, isLoading, error } = useInvoices({ ...statusFilter, search: debounced, page, page_size: PAGE_SIZE, ordering: '-invoice_date' })
+  const { data, isLoading, error } = useInvoices({ ...statusFilter, search: debounced, page, page_size: PAGE_SIZE, ordering: '-invoice_date,-id' }) // newest first within a day
 
   return (
     <div>
@@ -140,7 +140,7 @@ export function QuotationsPage() {
   const debounced = useDebounced(search)
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
-  const { data, isLoading, error } = useQuotations({ status, search: debounced, page, page_size: PAGE_SIZE, ordering: '-date' })
+  const { data, isLoading, error } = useQuotations({ status, search: debounced, page, page_size: PAGE_SIZE, ordering: '-date,-id' }) // newest first within a day
 
   return (
     <div>
@@ -180,6 +180,8 @@ export function QuotationsPage() {
                     </td>
                     <td className="px-4 py-3">
                       {q.client_name}
+                      {/* Not booked yet: a quotation for an enquiry, before it became an event. */}
+                      {!q.booking && <span className="ml-1.5 rounded-full bg-gold-100 px-2 py-0.5 text-xs font-medium text-gold-700">New</span>}
                       {q.booking_title && <span className="block text-xs text-stone-500">{q.booking_title}</span>}
                     </td>
                     <td className="px-4 py-3">
@@ -203,18 +205,43 @@ export function QuotationsPage() {
 
 // --- Editor pages ------------------------------------------------------------------------------
 
-/** /accounts/{invoices|quotations}/new?booking=ID prefills client, event and one line from the booking. */
+/**
+ * /accounts/{invoices|quotations}/new?booking=ID prefills client, event and one line from the booking.
+ * /accounts/quotations/new?lead=ID does the same from a lead, and links the quotation to it.
+ */
 export function NewDocumentPage({ kind }: { kind: 'invoice' | 'quotation' }) {
   const [params] = useSearchParams()
   const bookingId = Number(params.get('booking')) || 0
+  const leadId = kind === 'quotation' ? Number(params.get('lead')) || 0 : 0
   const { data: settings } = useSettings()
   const { data: taxRates } = useTaxRates()
   const booking = useBooking(bookingId)
-  if (!settings || !taxRates || (bookingId && !booking.data)) return <FullPageSpinner />
+  const lead = useLead(leadId)
+  if (!settings || !taxRates || (bookingId && !booking.data) || (leadId && !lead.data)) return <FullPageSpinner />
 
   const b = booking.data
+  const l = lead.data
   const defaultTax = String(Number(taxRates.find((t) => t.id === settings.default_tax_rate)?.rate ?? 18))
-  const prefill: Prefill | undefined = b
+  const prefill: Prefill | undefined = l
+    ? {
+        lead: { id: l.id, name: l.name, phone: l.phone, eventTypes: l.event_type_label },
+        client: l.client ? { id: l.client, name: l.client_name ?? l.name, phone: l.phone } : null,
+        booking: l.booking?.id ?? null,
+        items: [
+          {
+            description: [`${l.event_type_label || 'Event'} decoration`, [l.event_date && fmtDate(l.event_date), l.venue].filter(Boolean).join(', ')]
+              .filter(Boolean)
+              .join(' — '),
+            sac: settings.default_sac,
+            quantity: '1',
+            unit: 'Nos',
+            rate: l.budget ?? '',
+            discount: '0',
+            tax_rate: defaultTax,
+          },
+        ],
+      }
+    : b
     ? {
         client: { id: b.client, name: b.client_name, phone: b.client_phone },
         booking: b.id,
@@ -233,8 +260,12 @@ export function NewDocumentPage({ kind }: { kind: 'invoice' | 'quotation' }) {
     : undefined
   return (
     <div>
-      <BackLink to={`/admin/accounts/${kind}s`} label={kind === 'invoice' ? 'Invoices' : 'Quotations'} />
-      <h2 className="mb-4 text-2xl font-semibold text-brand-800">{kind === 'invoice' ? 'New invoice (draft)' : 'New quotation'}</h2>
+      {l ? (
+        <BackLink to={`/admin/crm/leads/${l.id}`} label={`Back to lead · ${l.name}`} />
+      ) : (
+        <BackLink to={`/admin/accounts/${kind}s`} label={kind === 'invoice' ? 'Invoices' : 'Quotations'} />
+      )}
+      <h2 className="mb-4 text-2xl font-semibold text-brand-800">{kind === 'invoice' ? 'New invoice (draft)' : l ? `New quotation for ${l.name}` : 'New quotation'}</h2>
       <DocumentEditor kind={kind} prefill={prefill} />
     </div>
   )
@@ -247,10 +278,16 @@ export function EditDocumentPage({ kind }: { kind: 'invoice' | 'quotation' }) {
   const invoice = useInvoice(kind === 'invoice' ? id : 0)
   const quotation = useQuotation(kind === 'quotation' ? id : 0)
   const doc = kind === 'invoice' ? invoice.data : quotation.data
+  const fromLead = Boolean((useLocation().state as { fromLead?: boolean } | null)?.fromLead)
   if (!settings || !taxRates || !doc) return <FullPageSpinner />
   return (
     <div>
-      <BackLink to={`/admin/accounts/${kind}s/${id}`} label="Back" />
+      {/* Opened from the lead's page, so the way back is to the lead. */}
+      {fromLead && 'lead' in doc && doc.lead ? (
+        <BackLink to={`/admin/crm/leads/${doc.lead}`} label={`Back to lead · ${doc.lead_name}`} />
+      ) : (
+        <BackLink to={`/admin/accounts/${kind}s/${id}`} label="Back" />
+      )}
       <h2 className="mb-4 text-2xl font-semibold text-brand-800">Edit {kind === 'invoice' ? 'draft invoice' : `quotation ${doc.number}`}</h2>
       <DocumentEditor kind={kind} doc={doc} />
     </div>
@@ -448,6 +485,13 @@ function QuotationView({ q }: { q: Quotation }) {
             <Panel title="Event">
               <Link to={`/admin/events/${q.booking}`} className="text-sm text-brand-700 hover:underline">
                 {q.booking_number} · {q.booking_title}
+              </Link>
+            </Panel>
+          )}
+          {q.lead && (
+            <Panel title="Lead">
+              <Link to={`/admin/crm/leads/${q.lead}`} className="text-sm text-brand-700 hover:underline">
+                {q.lead_name}
               </Link>
             </Panel>
           )}

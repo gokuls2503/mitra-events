@@ -10,6 +10,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.core.numbering import next_number
+from apps.crm import services as crm
 from apps.crm.models import Client
 from apps.operations.models import Vendor
 
@@ -172,6 +173,13 @@ def _write_items(doc, item_model, fk: str, items: list[dict]):
 @transaction.atomic
 def save_quotation(*, items: list[dict], user=None, instance: Quotation | None = None, **data) -> Quotation:
     profile = CompanyProfile.load()
+    lead = data.get("lead")
+    if instance is None and lead:
+        # Made from a lead: its client (found or created) and its booking, if it already has one.
+        data["client"] = data.get("client") or crm.client_for_lead(lead, user=user)
+        if not data.get("booking") and getattr(lead, "booking", None) and lead.booking.client_id == data["client"].id:
+            data["booking"] = lead.booking
+    created = instance is None
     if instance is None:
         date = data.get("date") or timezone.localdate()
         data["date"] = date
@@ -186,7 +194,22 @@ def save_quotation(*, items: list[dict], user=None, instance: Quotation | None =
     instance.updated_by = user
     instance.save()
     _write_items(instance, QuotationItem, "quotation", items)
+    if created and lead:
+        crm.quotation_created(lead, instance.number, user=user)
     return instance
+
+
+@transaction.atomic
+def set_quotation_status(quotation: Quotation, status: str, *, user=None) -> Quotation:
+    if quotation.status == Quotation.Status.INVOICED:
+        raise ValidationError("This quotation has already been invoiced.")
+    sent_now = status == Quotation.Status.SENT and quotation.status != Quotation.Status.SENT
+    quotation.status = status
+    quotation.updated_by = user
+    quotation.save(update_fields=["status", "updated_by", "updated_at"])
+    if sent_now and quotation.lead_id:
+        crm.quotation_sent(quotation.lead, quotation.number, user=user)
+    return quotation
 
 
 @transaction.atomic

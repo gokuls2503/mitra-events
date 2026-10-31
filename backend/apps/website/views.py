@@ -22,10 +22,12 @@ from .models import (
     EstimatorAddon,
     EstimatorEventType,
     EstimatorTier,
+    Faq,
     GalleryCategory,
     GalleryImage,
     Package,
     Service,
+    ServiceImage,
     SiteSettings,
     Testimonial,
 )
@@ -50,7 +52,7 @@ class PublicSettingsView(PublicMixin, generics.RetrieveAPIView):
 
 
 class PublicServiceViewSet(PublicMixin, viewsets.ReadOnlyModelViewSet):
-    queryset = Service.objects.filter(is_published=True)
+    queryset = Service.objects.filter(is_published=True).prefetch_related("images")
     serializer_class = s.PublicServiceSerializer
     lookup_field = "slug"
     filterset_fields = ["category", "is_featured"]
@@ -80,6 +82,11 @@ class PublicTestimonialViewSet(PublicMixin, mixins.ListModelMixin, viewsets.Gene
     queryset = Testimonial.objects.filter(is_published=True)
     serializer_class = s.PublicTestimonialSerializer
     filterset_fields = ["is_featured"]
+
+
+class PublicFaqViewSet(PublicMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    queryset = Faq.objects.filter(is_published=True)
+    serializer_class = s.PublicFaqSerializer
 
 
 class EstimatorOptionsView(PublicMixin, APIView):
@@ -175,10 +182,16 @@ class CmsSettingsView(CmsMixin, generics.RetrieveUpdateAPIView):
 
 
 class CmsServiceViewSet(CmsMixin, viewsets.ModelViewSet):
-    queryset = Service.objects.all()
+    queryset = Service.objects.prefetch_related("images")
     serializer_class = s.CmsServiceSerializer
     search_fields = ["name", "short_description"]
     filterset_fields = ["category", "is_published"]
+
+
+class CmsServiceImageViewSet(CmsMixin, viewsets.ModelViewSet):
+    queryset = ServiceImage.objects.all()
+    serializer_class = s.CmsServiceImageSerializer
+    filterset_fields = ["service"]
 
 
 class CmsPackageViewSet(CmsMixin, viewsets.ModelViewSet):
@@ -214,6 +227,11 @@ class CmsTestimonialViewSet(CmsMixin, viewsets.ModelViewSet):
     queryset = Testimonial.objects.all()
     serializer_class = s.CmsTestimonialSerializer
     filterset_fields = ["is_published"]
+
+
+class CmsFaqViewSet(CmsMixin, viewsets.ModelViewSet):
+    queryset = Faq.objects.all()
+    serializer_class = s.CmsFaqSerializer
 
 
 class CmsEstimatorEventTypeViewSet(CmsMixin, viewsets.ModelViewSet):

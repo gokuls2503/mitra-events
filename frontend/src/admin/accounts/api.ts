@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import type { EventType } from '@/public/api'
 import { api } from '@/shared/api/client'
 
 import type { Page, Params } from '../crm/api'
@@ -121,6 +122,9 @@ interface SalesDoc {
 export interface Quotation extends SalesDoc {
   number: string
   lead: number | null
+  lead_name: string | null
+  event_type: EventType | ''
+  event_type_label: string
   date: string
   valid_until: string | null
   status: QuotationStatus

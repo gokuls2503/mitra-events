@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 
 import { galleryCategoriesQuery, galleryQuery, settingsQuery, type GalleryImage } from '../api'
 import { Lightbox } from '../components/Lightbox'
-import { PageHero } from '../components/PageHero'
+import { heroImage, PageHero } from '../components/PageHero'
 import { Reveal } from '../components/Reveal'
 import { pageTitle } from '../head'
 import { Seo } from '../Seo'
@@ -42,7 +42,12 @@ export default function GalleryPage() {
         path="/gallery"
         image={sections.find((s) => s.photos.length)?.photos[0].image}
       />
-      <PageHero eyebrow="Gallery" title="Our work" intro="A glimpse of celebrations we've had the joy of decorating." />
+      <PageHero
+        eyebrow="Gallery"
+        title="Our work"
+        intro="A glimpse of celebrations we've had the joy of decorating."
+        image={heroImage(site, 'gallery')}
+      />
 
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
         {categories.length > 1 && (

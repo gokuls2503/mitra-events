@@ -197,7 +197,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
     serializer_class = s.QuotationSerializer
     filterset_class = QuotationFilter
     search_fields = ["number", "client__name", "client__phone", "booking__title"]
-    ordering_fields = ["date", "total", "number"]
+    ordering_fields = ["date", "total", "number", "id"]
 
     def get_queryset(self):
         return Quotation.objects.select_related("client", "booking").prefetch_related("items", "images")
@@ -246,11 +246,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
         new = request.data.get("status")
         if new not in (Quotation.Status.SENT, Quotation.Status.ACCEPTED, Quotation.Status.REJECTED, Quotation.Status.DRAFT):
             raise ValidationError({"status": "Choose sent, accepted, rejected or draft."})
-        if quotation.status == Quotation.Status.INVOICED:
-            raise ValidationError("This quotation has already been invoiced.")
-        quotation.status = new
-        quotation.updated_by = request.user
-        quotation.save(update_fields=["status", "updated_by", "updated_at"])
+        quotation = run(services.set_quotation_status, quotation, new, user=request.user)
         return Response(self.get_serializer(quotation).data)
 
     @action(detail=True, methods=["post"])
@@ -287,7 +283,7 @@ class InvoiceViewSet(AccountsAccess, viewsets.ModelViewSet):
     serializer_class = s.InvoiceSerializer
     filterset_class = InvoiceFilter
     search_fields = ["number", "client__name", "client__phone", "billing_name", "booking__title"]
-    ordering_fields = ["invoice_date", "due_date", "total", "number"]
+    ordering_fields = ["invoice_date", "due_date", "total", "number", "id"]
 
     def get_queryset(self):
         return Invoice.objects.select_related("client", "booking", "quotation").prefetch_related(

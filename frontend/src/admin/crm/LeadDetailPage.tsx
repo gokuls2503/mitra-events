@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CheckCircle2,
+  FileText,
   MessageCircle,
   MessageSquare,
   Pencil,
@@ -24,6 +25,8 @@ import { DateField } from '@/shared/ui/DateField'
 import { Modal } from '@/shared/ui/Modal'
 import { MultiSelectField } from '@/shared/ui/MultiSelectField'
 
+import { useQuotations, type Quotation } from '../accounts/api'
+import { DocStatus, Money } from '../accounts/ui'
 import { DeleteButton, FormError, QueryState } from '../kit'
 import { crm, useActivities, useCrmMutation, useFollowUps, useLead, useTeam, type ActivityKind, type FollowUp, type Lead, type LeadStatus } from './api'
 import { ConvertDialog, StatusDialog } from './dialogs'
@@ -51,6 +54,8 @@ function LeadDetail({ lead }: { lead: Lead }) {
 
   const canWork = hasRole('OWNER', 'MANAGER', 'STAFF')
   const isManager = hasRole('OWNER', 'MANAGER')
+  // The same people who can make quotations under Accounts & billing.
+  const canQuote = hasRole('OWNER', 'MANAGER', 'ACCOUNTANT')
   const isOpen = OPEN_STATUSES.includes(lead.status)
   const remove = useCrmMutation(crm.deleteLead)
 
@@ -89,6 +94,7 @@ function LeadDetail({ lead }: { lead: Lead }) {
           >
             <MessageCircle className="size-4" /> WhatsApp
           </a>
+          {canQuote && <QuotationButton lead={lead} />}
           {lead.booking ? (
             <Link to={`/admin/events/${lead.booking.id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-sm text-white hover:bg-brand-800">
               <CalendarCheck className="size-4" /> Booking {lead.booking.number}
@@ -190,6 +196,7 @@ function LeadDetail({ lead }: { lead: Lead }) {
         <aside className="space-y-6">
           <OwnerCard lead={lead} />
           <FollowUpsCard lead={lead} canWrite={canWork && isOpen} />
+          {canQuote && <QuotationsCard lead={lead} />}
           <LeadReferences leadId={lead.id} eyebrow={[lead.name, lead.event_type_label].filter(Boolean).join(' · ')} canWrite={canWork} />
           {isManager && !lead.booking && (
             <div className="rounded-xl border border-red-100 p-4">
@@ -228,6 +235,78 @@ function Item({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-xs text-stone-500">{label}</dt>
       <dd className="mt-0.5 text-stone-900">{children}</dd>
     </div>
+  )
+}
+
+// --- Quotations ------------------------------------------------------------------
+
+/** This lead's quotations, newest first. Shared by the header button and the card, so it loads once. */
+function useLeadQuotations(leadId: number) {
+  const query = useQuotations({ lead: leadId, page_size: 20, ordering: '-number' })
+  return { quotations: query.data?.results ?? [], isLoading: query.isLoading }
+}
+
+/** Where the quotation for this lead is edited or viewed; an invoiced one can only be viewed. */
+const quotationLink = (q: Quotation) => (q.status === 'INVOICED' ? `/admin/accounts/quotations/${q.id}` : `/admin/accounts/quotations/${q.id}/edit`)
+
+/**
+ * Opens the lead's latest quotation for editing, so a saved quotation is always one click away;
+ * only a lead without one gets a new, blank quotation. Further quotations come from "+ New" in the card.
+ */
+function QuotationButton({ lead }: { lead: Lead }) {
+  const { quotations, isLoading } = useLeadQuotations(lead.id)
+  const latest = quotations[0]
+  const className = 'inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm text-brand-800 hover:bg-brand-50'
+  if (isLoading) return null
+  if (latest)
+    return (
+      <Link to={quotationLink(latest)} state={{ fromLead: true }} className={className}>
+        <FileText className="size-4" /> {latest.status === 'INVOICED' ? 'Quotation' : 'Edit quotation'} {latest.number}
+      </Link>
+    )
+  if (lead.status === 'LOST') return null
+  return (
+    <Link to={`/admin/accounts/quotations/new?lead=${lead.id}`} className={className}>
+      <FileText className="size-4" /> Quotation
+    </Link>
+  )
+}
+
+/** Quotations made for this lead. They live under Accounts & billing; each opens there. */
+function QuotationsCard({ lead }: { lead: Lead }) {
+  const { quotations, isLoading } = useLeadQuotations(lead.id)
+  return (
+    <Card
+      title="Quotations"
+      icon={<FileText className="size-4 text-stone-400" />}
+      action={
+        lead.status !== 'LOST' && (
+          <Link to={`/admin/accounts/quotations/new?lead=${lead.id}`} className="text-sm text-brand-700 hover:underline">
+            + New
+          </Link>
+        )
+      }
+    >
+      {isLoading ? (
+        <p className="text-sm text-stone-500">Loading…</p>
+      ) : quotations.length === 0 ? (
+        <p className="text-sm text-stone-500">None yet.</p>
+      ) : (
+        <ul className="divide-y divide-stone-100">
+          {quotations.map((q) => (
+            <li key={q.id}>
+              <Link to={`/admin/accounts/quotations/${q.id}`} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-brand-50">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-brand-800">{q.number}</span>
+                  <DocStatus kind="quotation" status={q.status} label={q.status_label} />
+                </span>
+                <Money value={q.total} className="text-sm" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }
 
@@ -425,7 +504,13 @@ function Timeline({ lead, canWrite }: { lead: Lead; canWrite: boolean }) {
             <span
               className={clsx(
                 'absolute top-1.5 -left-[25px] size-2.5 rounded-full ring-4 ring-white',
-                a.kind === 'CONVERTED' ? 'bg-green-500' : MANUAL.some((m) => m.value === a.kind) ? 'bg-brand-500' : 'bg-stone-300',
+                a.kind === 'CONVERTED'
+                  ? 'bg-green-500'
+                  : a.kind === 'QUOTATION'
+                    ? 'bg-gold-500'
+                    : MANUAL.some((m) => m.value === a.kind)
+                      ? 'bg-brand-500'
+                      : 'bg-stone-300',
               )}
             />
             <p className="text-xs text-stone-500">

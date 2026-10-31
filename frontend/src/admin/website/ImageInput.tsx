@@ -23,7 +23,9 @@ export function ImageInput({ label, currentUrl, value, onChange, required, hint 
   const tooBig = value instanceof File && value.size > MAX_MB * 1024 * 1024
 
   return (
-    <div>
+    // `relative` keeps the hidden file input inside this box; without it the input is placed against
+    // the whole page and stretches it past the admin's own scroll area.
+    <div className="relative">
       <p className="mb-1 text-sm font-medium text-stone-700">{label}</p>
       <div className="flex items-center gap-3">
         <div className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-lg bg-stone-100 ring-1 ring-stone-200">

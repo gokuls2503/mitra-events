@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 backend/.env
 backend/media/
+backend/gallery_originals/
 backend/staticfiles/
 .pytest_cache/
 

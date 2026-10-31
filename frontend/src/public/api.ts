@@ -55,6 +55,11 @@ export interface SiteSettings {
   about_title: string
   about_body: string
   about_image: string | null
+  about_hero_image: string | null
+  services_hero_image: string | null
+  gallery_hero_image: string | null
+  contact_hero_image: string | null
+  estimate_hero_image: string | null
   stat_events: number
   stat_years: number
   stat_clients: number
@@ -68,11 +73,24 @@ export interface Service {
   short_description: string
   description: string
   highlights: string[]
+  keywords: string[]
+  /** "Label: value" lines. */
+  details: string[]
+  policies: string[]
+  payment_terms: string[]
   cover_image: string | null
+  /** Extra slideshow photos; the cover image comes first on the page. */
+  images: ServiceImage[]
   starting_price: string | null
   is_featured: boolean
   seo_title: string
   seo_description: string
+}
+
+export interface ServiceImage {
+  id: number
+  image: string
+  caption: string
 }
 
 export interface Package {
@@ -111,6 +129,12 @@ export interface Testimonial {
   rating: number
   photo: string | null
   is_featured: boolean
+}
+
+export interface Faq {
+  id: number
+  question: string
+  answer: string
 }
 
 export interface EstimatorOptions {
@@ -190,6 +214,11 @@ export const galleryCategoriesQuery = queryOptions({
 export const testimonialsQuery = queryOptions({
   queryKey: ['public', 'testimonials'],
   queryFn: () => get<Testimonial[]>('/website/testimonials/'),
+})
+
+export const faqsQuery = queryOptions({
+  queryKey: ['public', 'faqs'],
+  queryFn: () => get<Faq[]>('/website/faqs/'),
 })
 
 export const estimatorQuery = queryOptions({

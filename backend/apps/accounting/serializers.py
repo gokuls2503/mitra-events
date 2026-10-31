@@ -3,7 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.core.fields import RelativeImageField
-from apps.crm.models import Booking, Client
+from apps.crm.models import Booking, Client, Lead
 from apps.operations.models import Vendor
 
 from .models import (
@@ -185,13 +185,26 @@ class QuotationImageSerializer(serializers.ModelSerializer):
 
 
 class QuotationSerializer(SalesDocumentSerializer):
+    # From a lead, the client may be left out: the lead's client is found or created on save.
+    client = serializers.PrimaryKeyRelatedField(queryset=Client.objects.all(), required=False)
+    lead = serializers.PrimaryKeyRelatedField(queryset=Lead.objects.all(), required=False, allow_null=True)
+    lead_name = serializers.CharField(source="lead.name", read_only=True, default=None)
+    event_type_label = serializers.CharField(source="get_event_type_display", read_only=True)
     images = QuotationImageSerializer(many=True, read_only=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if not self.instance and not attrs.get("client") and not attrs.get("lead"):
+            raise serializers.ValidationError({"client": "Choose a client."})
+        if "lead" in attrs and self.instance and self.instance.lead_id and attrs["lead"] != self.instance.lead:
+            raise serializers.ValidationError({"lead": "A quotation can't move to another lead."})
+        return attrs
 
     class Meta:
         model = Quotation
         fields = [
             "id", "number", "client", "client_name", "client_gstin", "booking", "booking_title", "booking_number",
-            "lead", "date", "valid_until", "status", "status_label", "place_of_supply", "place_of_supply_name",
+            "lead", "lead_name", "event_type", "event_type_label", "date", "valid_until", "status", "status_label", "place_of_supply", "place_of_supply_name",
             "notes", "terms", "items", "images", *TOTAL_FIELDS, "created_at",
         ]
         read_only_fields = ["number", "status", *TOTAL_FIELDS, "created_at"]

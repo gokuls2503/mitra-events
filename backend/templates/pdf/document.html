@@ -134,7 +134,8 @@
         {% if kind == "invoice" and doc.billing_gstin %}<br><span class="party-extra">GSTIN {{ doc.billing_gstin }}</span>{% elif doc.client.gstin %}<br><span class="party-extra">GSTIN {{ doc.client.gstin }}</span>{% endif %}
       </td>
       <td class="event" style="width:34%">
-        {% if venue or event_dates %}<div class="doc-type">EVENT</div>{% endif %}
+        {% if event_type or venue or event_dates %}<div class="doc-type">EVENT</div>{% endif %}
+        {% if event_type %}{{ event_type }}<br>{% endif %}
         {% if venue %}{{ venue }}<br>{% endif %}
         {{ event_dates }}
       </td>

@@ -14,10 +14,12 @@ from .models import (
     EstimatorAddon,
     EstimatorEventType,
     EstimatorTier,
+    Faq,
     GalleryCategory,
     GalleryImage,
     Package,
     Service,
+    ServiceImage,
     SiteSettings,
     Testimonial,
 )
@@ -47,8 +49,15 @@ class PublicSettingsSerializer(ImageFieldsMixin, serializers.ModelSerializer):
         exclude = ["id", "created_at", "updated_at"]
 
 
+class ServiceImageSerializer(ImageFieldsMixin, serializers.ModelSerializer):
+    class Meta:
+        model = ServiceImage
+        fields = ["id", "image", "caption"]
+
+
 class PublicServiceSerializer(ImageFieldsMixin, serializers.ModelSerializer):
     category_label = serializers.CharField(source="get_category_display", read_only=True)
+    images = ServiceImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Service
@@ -60,7 +69,12 @@ class PublicServiceSerializer(ImageFieldsMixin, serializers.ModelSerializer):
             "short_description",
             "description",
             "highlights",
+            "keywords",
+            "details",
+            "policies",
+            "payment_terms",
             "cover_image",
+            "images",
             "starting_price",
             "is_featured",
             "seo_title",
@@ -107,6 +121,12 @@ class PublicTestimonialSerializer(ImageFieldsMixin, serializers.ModelSerializer)
     class Meta:
         model = Testimonial
         fields = ["id", "client_name", "event_type", "event_type_label", "event_location", "quote", "rating", "photo", "is_featured"]
+
+
+class PublicFaqSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Faq
+        fields = ["id", "question", "answer"]
 
 
 class EstimatorEventTypeSerializer(serializers.ModelSerializer):
@@ -188,11 +208,23 @@ class CmsSettingsSerializer(ImageFieldsMixin, serializers.ModelSerializer):
         model = SiteSettings
         exclude = ["id", "created_at"]
         read_only_fields = ["updated_at"]
-        extra_kwargs = {"hero_image": {"allow_null": True}, "about_image": {"allow_null": True}}
+        extra_kwargs = {
+            name: {"allow_null": True}
+            for name in [
+                "hero_image",
+                "about_image",
+                "about_hero_image",
+                "services_hero_image",
+                "gallery_hero_image",
+                "contact_hero_image",
+                "estimate_hero_image",
+            ]
+        }
 
 
 class CmsServiceSerializer(ImageFieldsMixin, serializers.ModelSerializer):
     category_label = serializers.CharField(source="get_category_display", read_only=True)
+    images = ServiceImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Service
@@ -202,6 +234,24 @@ class CmsServiceSerializer(ImageFieldsMixin, serializers.ModelSerializer):
 
     def validate_highlights(self, value):
         return _string_list(value)
+
+    def validate_keywords(self, value):
+        return _string_list(value)
+
+    def validate_details(self, value):
+        return _string_list(value)
+
+    def validate_policies(self, value):
+        return _string_list(value)
+
+    def validate_payment_terms(self, value):
+        return _string_list(value)
+
+
+class CmsServiceImageSerializer(ImageFieldsMixin, serializers.ModelSerializer):
+    class Meta:
+        model = ServiceImage
+        fields = ["id", "service", "image", "caption", "order"]
 
 
 class CmsPackageSerializer(serializers.ModelSerializer):
@@ -243,7 +293,7 @@ class CmsGallerySerializer(ImageFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = GalleryImage
         fields = "__all__"
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at", "is_watermarked"]
 
     def validate(self, attrs):
         if self.instance:
@@ -270,3 +320,10 @@ class CmsTestimonialSerializer(ImageFieldsMixin, serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_at", "updated_at"]
         extra_kwargs = {"photo": {"allow_null": True}}
+
+
+class CmsFaqSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Faq
+        fields = "__all__"
+        read_only_fields = ["created_at", "updated_at"]

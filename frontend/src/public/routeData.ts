@@ -10,7 +10,7 @@ import {
 } from './api'
 
 /** Public routes that are pre-rendered at build time (service detail pages are added from the API). */
-export const STATIC_ROUTES = ['/', '/about', '/services', '/packages', '/gallery', '/testimonials', '/contact', '/estimate']
+export const STATIC_ROUTES = ['/', '/about', '/services', '/gallery', '/contact', '/estimate']
 
 /** The data each page needs, fetched before pre-rendering so the HTML contains real content. */
 export function queriesForPath(path: string) {
@@ -21,13 +21,10 @@ export function queriesForPath(path: string) {
   switch (path) {
     case '/':
       return [...base, packagesQuery, galleryQuery, testimonialsQuery]
-    case '/packages':
     case '/contact':
       return [...base, packagesQuery]
     case '/gallery':
       return [...base, galleryQuery, galleryCategoriesQuery]
-    case '/testimonials':
-      return [...base, testimonialsQuery]
     case '/estimate':
       return [...base, estimatorQuery]
     default:

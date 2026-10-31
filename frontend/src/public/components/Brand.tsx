@@ -1,11 +1,5 @@
 import clsx from 'clsx'
 import { Building2, Wine } from 'lucide-react'
-import { useId } from 'react'
-
-/** Gradient ids must be unique per instance (the logo appears in header and footer). */
-function useSvgId() {
-  return useId().replace(/[^a-zA-Z0-9_-]/g, '')
-}
 
 /**
  * The Mitra lotus (the client's logo artwork, public/brand/lotus.png).
@@ -24,16 +18,17 @@ export function LotusMark({ className, tone = 'full' }: { className?: string; to
 }
 
 /** Lotus + "Mitra Events / management" wordmark, laid out as on the card. */
-export function Logo({ size = 'md', className }: { size?: 'md' | 'lg'; className?: string }) {
+/** `light` is for dark backgrounds, e.g. the navbar over the home page photo. */
+export function Logo({ size = 'md', light, className }: { size?: 'md' | 'lg'; light?: boolean; className?: string }) {
   const lg = size === 'lg'
   return (
     <span className={clsx('inline-flex items-center gap-2.5', lg && 'flex-col gap-1 text-center', className)}>
       <LotusMark className={lg ? 'h-16 w-auto' : 'h-9 w-auto shrink-0'} />
       <span className="leading-none">
-        <span className={clsx('block font-display font-bold text-gold-600', lg ? 'text-5xl' : 'text-[1.6rem]')}>Mitra Events</span>
+        <span className={clsx('block font-display font-bold', light ? 'text-gold-300' : 'text-gold-600', lg ? 'text-5xl' : 'text-[1.6rem]')}>Mitra Events</span>
         <span
           className={clsx(
-            'block font-light text-brand-700 lowercase',
+            'block font-light lowercase', light ? 'text-white' : 'text-brand-700',
             lg ? 'mt-1 text-2xl tracking-[0.18em]' : 'mt-0.5 text-[0.8rem] tracking-[0.22em]',
           )}
         >
@@ -52,42 +47,6 @@ export function LotusDivider({ className }: { className?: string }) {
       <LotusMark tone="gold" className="h-4 w-auto" />
       <span className="h-px w-12 bg-linear-to-l from-transparent to-gold-500 sm:w-20" />
     </span>
-  )
-}
-
-/**
- * The card's corner swoosh: a deep purple band edged with gold ribbons.
- * Place inside a `relative overflow-hidden` parent.
- */
-export function CornerSwoosh({ corner, size = 'md', className }: { corner: 'top-left' | 'bottom-right'; size?: 'sm' | 'md'; className?: string }) {
-  const id = useSvgId()
-  return (
-    <svg
-      viewBox="0 0 320 220"
-      aria-hidden="true"
-      focusable="false"
-      className={clsx(
-        'pointer-events-none absolute h-auto',
-        size === 'sm' ? 'w-32 sm:w-44 lg:w-52' : 'w-44 sm:w-64 lg:w-80',
-        corner === 'top-left' ? 'top-0 left-0' : 'right-0 bottom-0 rotate-180',
-        className,
-      )}
-    >
-      <defs>
-        <linearGradient id={`${id}-band`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#3f1a5e" />
-          <stop offset="1" stopColor="#7a3ea6" />
-        </linearGradient>
-        <linearGradient id={`${id}-ribbon`} x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#a27a26" />
-          <stop offset="0.5" stopColor="#ecd189" />
-          <stop offset="1" stopColor="#c39539" />
-        </linearGradient>
-      </defs>
-      <path d="M0 0h230C160 22 92 70 0 150Z" fill={`url(#${id}-band)`} opacity="0.92" />
-      <path d="M0 176C78 92 170 34 300 0" fill="none" stroke={`url(#${id}-ribbon)`} strokeWidth="5" strokeLinecap="round" />
-      <path d="M0 198C92 110 196 48 320 14" fill="none" stroke={`url(#${id}-ribbon)`} strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
-    </svg>
   )
 }
 

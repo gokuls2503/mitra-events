@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import { ArrowRight, Check, Quote, Star } from 'lucide-react'
+import { motion } from 'motion/react'
 import { Link } from 'react-router-dom'
 
 import { formatINR } from '@/shared/format'
@@ -41,6 +42,95 @@ export function ServiceCard({ service }: { service: Service }) {
         </div>
       </div>
     </Link>
+  )
+}
+
+/**
+ * A full-width service panel for the home page's stacking list: photo on one side, text on the other.
+ * `flip` puts the photo on the right.
+ */
+interface ServicePanelProps {
+  service: Service
+  /** Photo on the right instead of the left. */
+  flip?: boolean
+  /** A shorter panel with smaller text, for long lists. */
+  compact?: boolean
+  /** On scrolling into view, the photo slides in from its own side and the text from the other. */
+  slideIn?: boolean
+}
+
+const SLIDE = { duration: 0.8, ease: [0.22, 1, 0.36, 1] as const }
+
+export function ServicePanel({ service, flip, compact, slideIn }: ServicePanelProps) {
+  // Starting offsets: the photo comes from the side it sits on, the text from the opposite side.
+  const from = (side: 'photo' | 'text') => {
+    const photoLeft = !flip
+    const left = side === 'photo' ? photoLeft : !photoLeft
+    return slideIn ? { opacity: 0, x: left ? -80 : 80 } : false
+  }
+  const view = { once: true, margin: '-80px' }
+
+  return (
+    <article
+      className={clsx(
+        'grid overflow-hidden rounded-3xl bg-white ring-1 ring-gold-200 md:grid-cols-2',
+        compact ? 'shadow-xl md:min-h-[18rem]' : 'shadow-2xl md:min-h-[26rem]',
+      )}
+    >
+      <motion.div
+        initial={from('photo')}
+        whileInView={{ opacity: 1, x: 0 }}
+        viewport={view}
+        transition={SLIDE}
+        className={clsx('aspect-[4/3] overflow-hidden bg-brand-100 md:aspect-auto', flip && 'md:order-2')}
+      >
+        {service.cover_image && (
+          <img
+            src={service.cover_image}
+            alt={service.name}
+            loading="lazy"
+            decoding="async"
+            className="size-full object-cover transition duration-700 hover:scale-105"
+          />
+        )}
+      </motion.div>
+      <motion.div
+        initial={from('text')}
+        whileInView={{ opacity: 1, x: 0 }}
+        viewport={view}
+        transition={{ ...SLIDE, delay: slideIn ? 0.15 : 0 }}
+        className={clsx('flex flex-col justify-center', compact ? 'p-6 sm:p-8' : 'p-7 sm:p-10 lg:p-14')}
+      >
+        <p className="text-xs font-semibold tracking-widest text-gold-600 uppercase">{service.category_label}</p>
+        <h3 className={clsx('mt-2 font-semibold text-brand-800', compact ? 'text-2xl sm:text-3xl' : 'text-3xl sm:text-4xl')}>
+          {service.name}
+        </h3>
+        <p className={clsx('text-stone-600', compact ? 'mt-3 text-sm' : 'mt-4')}>{service.short_description}</p>
+        {service.highlights.length > 0 && (
+          <ul className={clsx('space-y-2 text-sm text-stone-700', compact ? 'mt-4' : 'mt-5')}>
+            {service.highlights.slice(0, compact ? 3 : 4).map((h) => (
+              <li key={h} className="flex gap-2">
+                <Check className="mt-0.5 size-4 shrink-0 text-gold-600" />
+                {h}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className={clsx('flex flex-wrap items-center gap-x-6 gap-y-3', compact ? 'mt-5' : 'mt-7')}>
+          <Link
+            to={`/services/${service.slug}`}
+            className="inline-flex items-center gap-2 rounded-full bg-brand-700 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-brand-800"
+          >
+            Explore <ArrowRight className="size-4" />
+          </Link>
+          {service.starting_price && (
+            <span className="text-sm text-stone-500">
+              From <strong className="text-brand-700">{formatINR(service.starting_price)}</strong>
+            </span>
+          )}
+        </div>
+      </motion.div>
+    </article>
   )
 }
 

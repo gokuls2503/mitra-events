@@ -1,4 +1,4 @@
-import type { EventType } from '@/public/api'
+import type { EventType, ServiceImage } from '@/public/api'
 import { EVENT_TYPE_LABELS } from '@/public/api'
 
 export const EVENT_TYPE_OPTIONS = Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => ({ value, label }))
@@ -12,13 +12,27 @@ export interface CmsService {
   short_description: string
   description: string
   highlights: string[]
+  keywords: string[]
+  /** "Label: value" lines. */
+  details: string[]
+  policies: string[]
+  payment_terms: string[]
   cover_image: string | null
+  images: ServiceImage[]
   starting_price: string | null
   is_featured: boolean
   is_published: boolean
   order: number
   seo_title: string
   seo_description: string
+}
+
+export interface CmsServiceImage {
+  id: number
+  service: number
+  image: string
+  caption: string
+  order: number
 }
 
 export interface CmsPackage {
@@ -46,6 +60,14 @@ export interface CmsTestimonial {
   rating: number
   photo: string | null
   is_featured: boolean
+  is_published: boolean
+  order: number
+}
+
+export interface CmsFaq {
+  id: number
+  question: string
+  answer: string
   is_published: boolean
   order: number
 }

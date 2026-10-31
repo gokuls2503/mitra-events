@@ -86,6 +86,14 @@ class TestPublicContent:
         res = client.get("/api/v1/website/services/pic/")
         assert res.data["cover_image"].startswith("/media/services/")
 
+    def test_faqs_starter_set_and_hidden_ones(self, client):
+        # The migration adds four starter questions for the About page.
+        assert len(client.get("/api/v1/website/faqs/").data) == 4
+        website_models.Faq.objects.filter(order=0).update(is_published=False)
+        res = client.get("/api/v1/website/faqs/")
+        assert len(res.data) == 3
+        assert set(res.data[0]) == {"id", "question", "answer"}
+
 
 @pytest.mark.django_db
 class TestEstimator:
@@ -210,6 +218,13 @@ class TestCmsPermissions:
         website_models.Testimonial.objects.create(client_name="Hidden", quote="q", is_published=False)
         assert len(client.get("/api/v1/cms/testimonials/").data) == 1
 
+    def test_manager_edits_faqs(self, client):
+        login_as(client, Role.MANAGER)
+        res = client.post("/api/v1/cms/faqs/", {"question": "Do you do flowers?", "answer": "Yes.", "order": 9}, format="json")
+        assert res.status_code == 201, res.data
+        client.patch(f"/api/v1/cms/faqs/{res.data['id']}/", {"answer": "Fresh ones."}, format="json")
+        assert client.get("/api/v1/website/faqs/").data[-1]["answer"] == "Fresh ones."
+
     def test_image_upload_and_clear(self, client):
         login_as(client, Role.MANAGER)
         svc = Service.objects.create(name="S", category="WEDDING", short_description="x")
@@ -223,6 +238,45 @@ class TestCmsPermissions:
         assert res.status_code == 200 and res.data["cover_image"].startswith("/media/")
         res = client.patch(f"/api/v1/cms/services/{svc.pk}/", {"cover_image": None}, format="json")
         assert res.status_code == 200 and res.data["cover_image"] is None
+
+    def test_service_slideshow_photos_and_keywords(self, client):
+        login_as(client, Role.MANAGER)
+        svc = Service.objects.create(name="S", category="WEDDING", short_description="x")
+        client.patch(
+            f"/api/v1/cms/services/{svc.pk}/",
+            {"keywords": ["Fresh flowers", "  ", "Lighting"], "details": ["Service area: Coimbatore", ""]},
+            format="json",
+        )
+        for order in (2, 1):
+            buf = io.BytesIO()
+            Image.new("RGB", (20, 20), "purple").save(buf, "PNG")
+            res = client.post(
+                "/api/v1/cms/service-images/",
+                {"service": svc.pk, "order": order, "image": SimpleUploadedFile(f"p{order}.png", buf.getvalue(), content_type="image/png")},
+                format="multipart",
+            )
+            assert res.status_code == 201, res.data
+        assert len(client.get(f"/api/v1/cms/service-images/?service={svc.pk}").data) == 2
+        public = client.get(f"/api/v1/website/services/{svc.slug}/").data
+        assert public["keywords"] == ["Fresh flowers", "Lighting"]
+        assert public["details"] == ["Service area: Coimbatore"]
+        assert [p["image"].rsplit("/", 1)[-1][:2] for p in public["images"]] == ["p1", "p2"]
+
+    def test_each_page_banner_is_separate(self, client):
+        login_as(client, Role.MANAGER)
+        buf = io.BytesIO()
+        Image.new("RGB", (20, 20), "gold").save(buf, "PNG")
+        res = client.patch(
+            "/api/v1/cms/settings/",
+            {"gallery_hero_image": SimpleUploadedFile("g.png", buf.getvalue(), content_type="image/png")},
+            format="multipart",
+        )
+        assert res.status_code == 200 and res.data["gallery_hero_image"].startswith("/media/")
+        public = client.get("/api/v1/website/settings/").data
+        assert public["gallery_hero_image"] == res.data["gallery_hero_image"]
+        assert public["contact_hero_image"] is None
+        res = client.patch("/api/v1/cms/settings/", {"gallery_hero_image": None}, format="json")
+        assert res.status_code == 200 and res.data["gallery_hero_image"] is None
 
     def test_non_image_upload_rejected(self, client):
         login_as(client, Role.MANAGER)

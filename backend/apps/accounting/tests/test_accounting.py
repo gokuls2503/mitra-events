@@ -221,6 +221,50 @@ class TestQuotations:
         q.refresh_from_db()
         assert q.status == Quotation.Status.ACCEPTED
 
+    def test_quotation_from_lead_makes_client_once_and_follows_to_booking(self, setup):
+        lead = crm_services.create_lead(name="Danu", phone="+919000000001", event_type="BIRTHDAY", source="PHONE")
+        c = api(setup["manager"])
+        body = {"lead": lead.pk, "items": [{"description": "Birthday decor", "quantity": "1", "rate": "20000", "tax_rate": "18"}]}
+        res = c.post("/api/v1/accounts/quotations/", body, format="json")
+        assert res.status_code == 201, res.data
+        lead.refresh_from_db()
+        assert lead.client and res.data["client"] == lead.client_id and res.data["lead_name"] == "Danu"
+        # Saving is only preparing it: the lead stays new until the quotation is marked as sent.
+        assert lead.status == "NEW" and lead.activities.filter(kind="QUOTATION").exists()
+        assert c.post(f"/api/v1/accounts/quotations/{res.data['id']}/set-status/", {"status": "SENT"}, format="json").status_code == 200
+        lead.refresh_from_db()
+        assert lead.status == "QUOTATION_SENT"
+        # A second quotation reuses the same client.
+        assert c.post("/api/v1/accounts/quotations/", body, format="json").status_code == 201
+        assert Client.objects.filter(phone="+919000000001").count() == 1
+        assert c.get(f"/api/v1/accounts/quotations/?lead={lead.pk}").data["count"] == 2
+        # Converting the lead hands its quotations to the booking.
+        booking = crm_services.convert_to_booking(lead, title="Danu birthday", event_type="BIRTHDAY", event_date=TODAY, venue="Home")
+        assert set(Quotation.objects.values_list("booking", flat=True)) == {booking.pk}
+        assert Client.objects.filter(phone="+919000000001").count() == 1
+
+    def test_quotation_event_type_on_pdf(self, setup):
+        from apps.accounting.exports import letterpad_context
+
+        lead = crm_services.create_lead(
+            name="Asha", phone="+919000000003", event_type="ENGAGEMENT", event_types=["ENGAGEMENT", "RECEPTION"], source="PHONE"
+        )
+        q = services.save_quotation(lead=lead, items=[item()])
+        assert q.event_type == "" and letterpad_context(q, "quotation")["event_type"] == "Engagement, Reception"
+        res = api(setup["manager"]).patch(f"/api/v1/accounts/quotations/{q.pk}/", {"event_type": "WEDDING"}, format="json")
+        assert res.status_code == 200 and res.data["event_type_label"] == "Wedding"
+        q.refresh_from_db()
+        assert letterpad_context(q, "quotation")["event_type"] == "Wedding"
+
+    def test_quotation_needs_client_or_lead(self, setup):
+        res = api(setup["manager"]).post("/api/v1/accounts/quotations/", {"items": [{"description": "x", "quantity": "1", "rate": "1", "tax_rate": "18"}]}, format="json")
+        assert res.status_code == 400 and "client" in res.data
+
+    def test_staff_cannot_quote_from_lead(self, setup):
+        lead = crm_services.create_lead(name="Danu", phone="+919000000002", event_type="BIRTHDAY", source="PHONE")
+        res = api(setup["staff"]).post("/api/v1/accounts/quotations/", {"lead": lead.pk, "items": []}, format="json")
+        assert res.status_code == 403
+
     def test_quotation_pdf(self, setup):
         q = services.save_quotation(client=setup["client"], items=[item()])
         res = api(setup["manager"]).get(f"/api/v1/accounts/quotations/{q.pk}/pdf/")

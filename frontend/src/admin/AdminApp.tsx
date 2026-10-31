@@ -16,6 +16,7 @@ const SettingsTab = lazy(() => import('./website/SettingsTab'))
 const ServicesTab = lazy(() => import('./website/ServicesTab'))
 const PackagesTab = lazy(() => import('./website/PackagesTab'))
 const TestimonialsTab = lazy(() => import('./website/TestimonialsTab'))
+const FaqsTab = lazy(() => import('./website/FaqsTab'))
 const EstimatorTab = lazy(() => import('./website/EstimatorTab'))
 const CrmLayout = lazy(() => import('./crm/CrmLayout'))
 const LeadsPage = lazy(() => import('./crm/LeadsPage'))
@@ -92,6 +93,7 @@ export default function AdminApp() {
               <Route path="services" element={<ServicesTab />} />
               <Route path="packages" element={<PackagesTab />} />
               <Route path="testimonials" element={<TestimonialsTab />} />
+              <Route path="faqs" element={<FaqsTab />} />
               <Route path="estimator" element={<EstimatorTab />} />
             </Route>
             <Route path="crm" element={<CrmLayout />}>

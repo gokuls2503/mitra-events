@@ -6,6 +6,8 @@ from apps.core.choices import EventType
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validate_image_size
 
+from .watermark import watermarked
+
 
 class SeoFields(models.Model):
     seo_title = models.CharField(max_length=70, blank=True, help_text="Defaults to the name if blank.")
@@ -38,6 +40,13 @@ class SiteSettings(TimeStampedModel):
     about_title = models.CharField(max_length=120, blank=True)
     about_body = models.TextField(blank=True)
     about_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+
+    # Banner photo at the top of each inner page; empty = the page's own built-in photo.
+    about_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+    services_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+    gallery_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+    contact_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+    estimate_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
 
     stat_events = models.PositiveIntegerField(default=0, help_text="Events completed")
     stat_years = models.PositiveIntegerField(default=0, help_text="Years of experience")
@@ -81,6 +90,10 @@ class Service(SlugModel, SeoFields, TimeStampedModel):
     short_description = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     highlights = models.JSONField(default=list, blank=True, help_text="List of short bullet points")
+    keywords = models.JSONField(default=list, blank=True, help_text="Short tags shown as chips beside the photos")
+    details = models.JSONField(default=list, blank=True, help_text='"Label: value" lines, e.g. "Service area: Coimbatore"')
+    policies = models.JSONField(default=list, blank=True, help_text="Booking policies, one per item")
+    payment_terms = models.JSONField(default=list, blank=True, help_text="Payment policies, one per item")
     cover_image = models.ImageField(upload_to="services/", blank=True, validators=[validate_image_size])
     starting_price = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True)
     is_featured = models.BooleanField(default=False)
@@ -92,6 +105,21 @@ class Service(SlugModel, SeoFields, TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+
+class ServiceImage(TimeStampedModel):
+    """Extra slideshow photos on a service page; the service's cover image is always the first slide."""
+
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(upload_to="services/", validators=[validate_image_size])
+    caption = models.CharField(max_length=160, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.caption or f"{self.service} photo {self.pk}"
 
 
 class Package(SlugModel, TimeStampedModel):
@@ -142,9 +170,20 @@ class GalleryImage(TimeStampedModel):
     is_featured = models.BooleanField(default=False, help_text="Show on the home page")
     is_published = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=0)
+    is_watermarked = models.BooleanField(default=False, editable=False)
 
     class Meta:
         ordering = ["order", "-created_at"]
+
+    def save(self, *args, **kwargs):
+        # A newly chosen file is stamped before it's stored; the site never holds an unstamped upload.
+        if self.image and not self.image._committed:
+            stamped = watermarked(self.image.file, self.image.name)
+            self.image.save(stamped.name, stamped, save=False)
+            self.is_watermarked = True
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = {*kwargs["update_fields"], "image", "is_watermarked"}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.caption or f"Gallery image {self.pk}"
@@ -166,6 +205,23 @@ class Testimonial(TimeStampedModel):
 
     def __str__(self):
         return f"{self.client_name} ({self.get_event_type_display()})"
+
+
+class Faq(TimeStampedModel):
+    """A question and answer for the About page's FAQ accordion."""
+
+    question = models.CharField(max_length=200)
+    answer = models.TextField()
+    is_published = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name = "FAQ"
+        verbose_name_plural = "FAQs"
+
+    def __str__(self):
+        return self.question
 
 
 # --- Cost estimator -------------------------------------------------------

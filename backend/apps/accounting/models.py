@@ -11,6 +11,7 @@ from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.db import models
 
+from apps.core.choices import EventType
 from apps.core.models import AuditedModel, TimeStampedModel
 
 from .states import GST_STATES
@@ -238,6 +239,8 @@ class Quotation(SalesDocument):
 
     number = models.CharField(max_length=30, unique=True)
     lead = models.ForeignKey("crm.Lead", null=True, blank=True, on_delete=models.SET_NULL, related_name="quotations")
+    # What is being quoted for; picked on the quotation, so it can be quoted before there's a booking.
+    event_type = models.CharField(max_length=20, choices=EventType.choices, blank=True)
     date = models.DateField()
     valid_until = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT, db_index=True)

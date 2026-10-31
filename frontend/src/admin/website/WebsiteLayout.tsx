@@ -7,6 +7,7 @@ const TABS = [
   { to: 'services', label: 'Services' },
   { to: 'packages', label: 'Packages' },
   { to: 'testimonials', label: 'Testimonials' },
+  { to: 'faqs', label: 'FAQs' },
   { to: 'estimator', label: 'Cost estimator' },
 ]
 

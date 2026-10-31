@@ -7,6 +7,7 @@ import { Modal } from '@/shared/ui/Modal'
 
 import { linesToList, listToLines, numOrNull, useCmsDelete, useCmsList, useCmsSave, type ImageChange } from './cms'
 import { ImageInput } from './ImageInput'
+import { ServicePhotos } from './ServicePhotos'
 import { EVENT_TYPE_OPTIONS, type CmsService } from './types'
 import { DeleteButton, FormActions, FormError, Published, QueryState, TABLE, TABLE_WRAP, TabHeader, THEAD } from '../kit'
 
@@ -65,7 +66,14 @@ export default function ServicesTab() {
   )
 }
 
-type Values = Omit<CmsService, 'id' | 'slug' | 'category_label' | 'cover_image' | 'highlights'> & { highlights: string }
+// List fields, edited as one item per line.
+const LIST_FIELDS = ['highlights', 'keywords', 'details', 'policies', 'payment_terms'] as const
+type ListField = (typeof LIST_FIELDS)[number]
+type Values = Omit<CmsService, 'id' | 'slug' | 'category_label' | 'cover_image' | 'images' | ListField> & Record<ListField, string>
+const listsAsLines = (lists?: Pick<CmsService, ListField>) =>
+  Object.fromEntries(LIST_FIELDS.map((f) => [f, listToLines(lists?.[f])])) as Record<ListField, string>
+const linesAsLists = (values: Values) =>
+  Object.fromEntries(LIST_FIELDS.map((f) => [f, linesToList(values[f])])) as Record<ListField, string[]>
 
 function ServiceForm({ service, onDone }: { service: CmsService | null; onDone: () => void }) {
   const save = useCmsSave<CmsService>('services')
@@ -73,13 +81,29 @@ function ServiceForm({ service, onDone }: { service: CmsService | null; onDone: 
   const [image, setImage] = useState<ImageChange>()
   const { register, handleSubmit } = useForm<Values>({
     defaultValues: service
-      ? { ...service, highlights: listToLines(service.highlights) }
-      : { name: '', category: 'WEDDING', short_description: '', description: '', highlights: '', starting_price: '', is_featured: false, is_published: true, order: 0, seo_title: '', seo_description: '' },
+      ? { ...service, ...listsAsLines(service) }
+      : {
+          name: '',
+          category: 'WEDDING',
+          short_description: '',
+          description: '',
+          ...listsAsLines(),
+          starting_price: '',
+          is_featured: false,
+          is_published: true,
+          order: 0,
+          seo_title: '',
+          seo_description: '',
+        },
   })
 
   const onSubmit = (v: Values) =>
     save.mutate(
-      { id: service?.id, data: { ...v, highlights: linesToList(v.highlights), starting_price: numOrNull(v.starting_price) }, images: { cover_image: image } },
+      {
+        id: service?.id,
+        data: { ...v, ...linesAsLists(v), starting_price: numOrNull(v.starting_price) },
+        images: { cover_image: image },
+      },
       { onSuccess: onDone },
     )
 
@@ -94,11 +118,32 @@ function ServiceForm({ service, onDone }: { service: CmsService | null; onDone: 
         <TextField label="Starting price (₹)" type="number" min={0} {...register('starting_price')} />
         <TextField label="Display order" type="number" min={0} hint="Lower numbers show first." {...register('order')} />
       </div>
-      <ImageInput label="Cover image" currentUrl={service?.cover_image} value={image} onChange={setImage} />
+      <TextAreaField
+        label="Keywords"
+        rows={4}
+        className="sm:col-span-2"
+        hint="One per line, a few words each, e.g. Fresh flower decor. Shown as tags beside the photos."
+        {...register('keywords')}
+      />
+      <TextAreaField
+        label="Service details"
+        rows={5}
+        className="sm:col-span-2"
+        hint='One per line as "Label: value", e.g. Service area: Coimbatore & Tirupur.'
+        {...register('details')}
+      />
+      <TextAreaField label="Booking policies" rows={4} hint="One per line." {...register('policies')} />
+      <TextAreaField label="Payment policies" rows={4} hint="One per line." {...register('payment_terms')} />
+      <ImageInput label="Cover image" currentUrl={service?.cover_image} value={image} onChange={setImage} hint="The first photo in the slideshow." />
       <div className="space-y-3 pt-6">
         <CheckboxField label="Published" hint="Visible on the website" {...register('is_published')} />
         <CheckboxField label="Feature on home page" {...register('is_featured')} />
       </div>
+      {service ? (
+        <ServicePhotos serviceId={service.id} />
+      ) : (
+        <p className="text-sm text-stone-500 sm:col-span-2">Save the service first, then open it again to add slideshow photos.</p>
+      )}
       <details className="sm:col-span-2">
         <summary className="cursor-pointer text-sm font-medium text-stone-700">Search engine (SEO) — optional</summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">

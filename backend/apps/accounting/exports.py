@@ -140,6 +140,13 @@ def letterpad_context(doc, kind: str) -> dict:
     else:
         name, phone = doc.client.name, doc.client.phone
 
+    # Quotations only: the event type picked on the quotation, else the booking's or lead's
+    # (all of them, e.g. "Engagement, Reception"). Invoices print as before.
+    event_type = ""
+    if kind == "quotation":
+        source = booking or lead
+        event_type = doc.get_event_type_display() if doc.event_type else (source.event_types_label if source else "")
+
     if booking is not None:
         venue, dates = booking.venue, event_dates(booking.event_date, booking.end_date)
     elif lead is not None:
@@ -161,6 +168,7 @@ def letterpad_context(doc, kind: str) -> dict:
     return {
         "party_name": name,
         "party_phone": local_phone(phone),
+        "event_type": event_type,
         "venue": venue,
         "event_dates": dates,
         "photos": document_photos(doc, kind, lead),

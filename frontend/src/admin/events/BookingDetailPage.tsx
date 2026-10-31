@@ -31,6 +31,8 @@ function BookingDetail({ booking: b }: { booking: Booking }) {
   const [cancelling, setCancelling] = useState(false)
   const save = useCrmMutation(crm.saveBooking)
   const days = daysUntil(b.event_date)
+  // Work can be marked started from the decoration day, or the day before the event if that's earlier.
+  const workStarted = days <= 1 || (b.setup_date !== null && daysUntil(b.setup_date) <= 0)
   const setStatus = (status: BookingStatus) => save.mutate({ id: b.id, status })
 
   return (
@@ -68,7 +70,7 @@ function BookingDetail({ booking: b }: { booking: Booking }) {
           <Button variant="secondary" onClick={() => window.print()} title="Printable sheet for the decor team">
             <Printer className="size-4" /> Event sheet
           </Button>
-          {isManager && b.status === 'CONFIRMED' && days <= 1 && (
+          {isManager && b.status === 'CONFIRMED' && workStarted && (
               <Button variant="secondary" loading={save.isPending} onClick={() => setStatus('IN_PROGRESS')}>
                 Mark in progress
               </Button>

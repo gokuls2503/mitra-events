@@ -2,22 +2,21 @@ import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Mail, MapPin, Menu, MessageCircle, Navigation, Phone, X } from 'lucide-react'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { directionsLink, mapsLink, telLink, waLink } from '@/shared/format'
 
 import { servicesQuery, settingsQuery } from './api'
-import { CornerSwoosh, Logo } from './components/Brand'
+import { Logo } from './components/Brand'
+import { HeroNavContext } from './components/HeroNav'
 import { FacebookIcon, InstagramIcon, YoutubeIcon } from './components/SocialIcons'
 
 const NAV = [
   { to: '/', label: 'Home' },
   { to: '/about', label: 'About' },
   { to: '/services', label: 'Services' },
-  { to: '/packages', label: 'Packages' },
   { to: '/gallery', label: 'Gallery' },
-  { to: '/testimonials', label: 'Testimonials' },
   { to: '/contact', label: 'Contact' },
 ]
 
@@ -30,6 +29,11 @@ export function PublicLayout() {
   const menuOpen = menuOpenOn === pathname
   const [scrolled, setScrolled] = useState(false)
   const { data: site } = useQuery(settingsQuery)
+  // On pages that open with a photo hero, the navbar floats see-through over it until you scroll.
+  const [heroes, setHeroes] = useState(0)
+  const registerHero = useCallback((change: 1 | -1) => setHeroes((n) => n + change), [])
+  const hasHero = heroes > 0
+  const overHero = hasHero && !scrolled && !menuOpen
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -42,21 +46,42 @@ export function PublicLayout() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  // No right-click menu or dragging on photos (Save image…). On the document, so the full-screen
+  // photo viewer is covered; text and links keep working, and the admin isn't affected.
+  useEffect(() => {
+    const protect = (e: Event) => {
+      if (e.target instanceof HTMLImageElement) e.preventDefault()
+    }
+    document.addEventListener('contextmenu', protect)
+    document.addEventListener('dragstart', protect)
+    document.documentElement.classList.add('protect-images') // the phone equivalent, in index.css
+    return () => {
+      document.removeEventListener('contextmenu', protect)
+      document.removeEventListener('dragstart', protect)
+      document.documentElement.classList.remove('protect-images')
+    }
+  }, [])
+
   return (
     <MotionConfig reducedMotion="user">
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen flex-col bg-blush-light">
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2">
           Skip to content
         </a>
         <header
           className={clsx(
-            'sticky top-0 z-40 transition-all duration-300',
-            scrolled ? 'border-b border-gold-200 bg-ivory/90 shadow-sm backdrop-blur-md' : 'border-b border-transparent bg-ivory',
+            'top-0 z-40 transition-all duration-300',
+            hasHero ? 'fixed inset-x-0' : 'sticky',
+            overHero
+              ? 'border-b border-transparent bg-transparent'
+              : scrolled
+                ? 'border-b border-gold-200 bg-blush-light/90 shadow-sm backdrop-blur-md'
+                : 'border-b border-transparent bg-blush-light',
           )}
         >
           <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3 sm:px-6">
             <Link to="/" className="shrink-0" aria-label={`${site?.business_name ?? 'Mitra Events Management'} home`}>
-              <Logo />
+              <Logo light={overHero} />
             </Link>
             <nav className="ml-auto hidden lg:block" aria-label="Main">
               <ul className="flex items-center gap-1">
@@ -67,8 +92,14 @@ export function PublicLayout() {
                       end={item.to === '/'}
                       className={({ isActive }) =>
                         clsx(
-                          'relative rounded-full px-3 py-2 text-sm font-medium transition',
-                          isActive ? 'text-brand-800' : 'text-stone-600 hover:text-brand-700',
+                          'relative rounded-full px-3 py-2 text-sm transition',
+                          overHero
+                            ? isActive
+                              ? 'font-bold text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.7)]'
+                              : 'font-bold text-white/90 [text-shadow:0_1px_3px_rgb(0_0_0/0.7)] hover:text-white'
+                            : isActive
+                              ? 'font-medium text-brand-800'
+                              : 'font-medium text-stone-600 hover:text-brand-700',
                         )
                       }
                     >
@@ -95,7 +126,7 @@ export function PublicLayout() {
               Get an estimate
             </Link>
             <button
-              className="ml-auto rounded-lg p-2 text-brand-800 sm:ml-0 lg:hidden"
+              className={clsx('ml-auto rounded-lg p-2 sm:ml-0 lg:hidden', overHero ? 'text-white' : 'text-brand-800')}
               onClick={() => setMenuOpenOn(menuOpen ? null : pathname)}
               aria-expanded={menuOpen}
               aria-controls="mobile-nav"
@@ -112,7 +143,7 @@ export function PublicLayout() {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden border-t border-brand-100 bg-ivory lg:hidden"
+                className="overflow-hidden border-t border-brand-100 bg-blush-light lg:hidden"
               >
                 <ul className="space-y-1 px-4 py-3">
                   {NAV.map((item) => (
@@ -140,7 +171,9 @@ export function PublicLayout() {
         </header>
 
         <main id="main" className="flex-1">
-          <Outlet />
+          <HeroNavContext.Provider value={registerHero}>
+            <Outlet />
+          </HeroNavContext.Provider>
         </main>
 
         <Footer />
@@ -173,8 +206,7 @@ function Footer() {
   const link = 'inline-flex min-h-11 items-center hover:text-brand-700 hover:underline'
 
   return (
-    <footer className="relative isolate overflow-hidden border-t border-gold-300 bg-cream text-stone-700">
-      <CornerSwoosh corner="bottom-right" size="sm" className="-z-10 opacity-90" />
+    <footer className="relative isolate overflow-hidden border-t border-gold-300 bg-blush-light text-stone-700">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <Link to="/" aria-label={`${site?.business_name ?? 'Mitra Events Management'} home`}>

@@ -8,7 +8,7 @@ export type LeadStatus = 'NEW' | 'CONTACTED' | 'MEETING' | 'QUOTATION_SENT' | 'N
 export type LeadSource = 'WEBSITE' | 'ESTIMATOR' | 'PHONE' | 'WHATSAPP' | 'WALK_IN' | 'INSTAGRAM' | 'FACEBOOK' | 'REFERRAL' | 'OTHER'
 export type BookingStatus = 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type FollowUpKind = 'CALL' | 'WHATSAPP' | 'MEETING' | 'SITE_VISIT' | 'EMAIL'
-export type ActivityKind = 'CREATED' | 'STATUS' | 'ASSIGNED' | 'NOTE' | 'CALL' | 'WHATSAPP' | 'MEETING' | 'FOLLOW_UP' | 'CONVERTED'
+export type ActivityKind = 'CREATED' | 'STATUS' | 'ASSIGNED' | 'NOTE' | 'CALL' | 'WHATSAPP' | 'MEETING' | 'FOLLOW_UP' | 'CONVERTED' | 'QUOTATION'
 
 export interface Page<T> {
   count: number
@@ -184,7 +184,7 @@ export const usePipeline = (params: Params = {}, options: { refetchInterval?: nu
   })
 
 export const useLead = (id: number) =>
-  useQuery({ queryKey: ['crm', 'lead', id], queryFn: async () => (await api.get<Lead>(`/crm/leads/${id}/`)).data })
+  useQuery({ queryKey: ['crm', 'lead', id], queryFn: async () => (await api.get<Lead>(`/crm/leads/${id}/`)).data, enabled: id > 0 })
 
 export const useActivities = (leadId: number) =>
   useQuery({
