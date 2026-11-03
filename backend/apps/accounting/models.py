@@ -13,6 +13,7 @@ from django.db import models
 
 from apps.core.choices import EventType
 from apps.core.models import AuditedModel, TimeStampedModel
+from apps.crm.models import EventTypesMixin
 
 from .states import GST_STATES
 
@@ -54,7 +55,7 @@ class CompanyProfile(TimeStampedModel):
     default_sac = models.CharField("Default SAC code", max_length=8, default="998596")
     default_tax_rate = models.ForeignKey("TaxRate", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     invoice_due_days = models.PositiveSmallIntegerField(default=7)
-    quotation_valid_days = models.PositiveSmallIntegerField(default=15)
+    quotation_valid_days = models.PositiveSmallIntegerField(default=7)
     invoice_terms = models.TextField(blank=True)
     quotation_terms = models.TextField(blank=True)
     authorised_signatory = models.CharField(max_length=120, blank=True)
@@ -229,7 +230,7 @@ class LineItem(models.Model):
         ordering = ["order", "id"]
 
 
-class Quotation(SalesDocument):
+class Quotation(EventTypesMixin, SalesDocument):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         SENT = "SENT", "Sent"
@@ -241,6 +242,7 @@ class Quotation(SalesDocument):
     lead = models.ForeignKey("crm.Lead", null=True, blank=True, on_delete=models.SET_NULL, related_name="quotations")
     # What is being quoted for; picked on the quotation, so it can be quoted before there's a booking.
     event_type = models.CharField(max_length=20, choices=EventType.choices, blank=True)
+    event_types = models.JSONField(default=list, blank=True)
     date = models.DateField()
     valid_until = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT, db_index=True)
@@ -253,9 +255,9 @@ class Quotation(SalesDocument):
 
 
 class QuotationImage(models.Model):
-    """Up to two photos printed on the quotation PDF, side by side under the client details."""
+    """Up to five photos printed on the quotation PDF, under the client details."""
 
-    MAX_PER_QUOTATION = 2
+    MAX_PER_QUOTATION = 5
 
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name="images")
     image = models.ImageField(upload_to="quotations/%Y/%m/")

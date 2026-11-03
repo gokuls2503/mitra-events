@@ -165,6 +165,7 @@ interface ConvertValues {
   agreed_amount: string
   coordinator: string
   coordinator_text: string
+  coordinator_phone: string
   notes: string
   client_name: string
   client_email: string
@@ -199,6 +200,8 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       venue_address: lead.venue_address,
       agreed_amount: lead.budget ?? '',
       coordinator: coordinator ? String(coordinator) : '',
+      coordinator_text: lead.coordinator_text,
+      coordinator_phone: lead.coordinator_phone,
       notes: lead.message,
       client_name: lead.name,
       client_email: lead.email,
@@ -244,6 +247,7 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
         />
         <TextField label="Handover time" hint="When the decor is handed over to the client" type="time" {...register('start_time')} />
         <TextField label="Coordinator" placeholder="Type the coordinator's name" {...register('coordinator_text')} />
+        <TextField label="Coordinator number" type="tel" placeholder="98765 43210" {...register('coordinator_phone')} />
         <Controller
           control={control}
           name="setup_date"

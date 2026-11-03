@@ -20,6 +20,7 @@ export const LEAD_SOURCES: { value: LeadSource; label: string }[] = [
   { value: 'INSTAGRAM', label: 'Instagram' },
   { value: 'FACEBOOK', label: 'Facebook' },
   { value: 'REFERRAL', label: 'Referral' },
+  { value: 'HALL_REFERRAL', label: 'Hall referral' },
   { value: 'WEBSITE', label: 'Website' },
   { value: 'ESTIMATOR', label: 'Website cost estimator' },
   { value: 'OTHER', label: 'Other' },

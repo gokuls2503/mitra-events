@@ -1,6 +1,9 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, GripVertical } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 
+import { api } from '@/shared/api/client'
 import { formatINR } from '@/shared/format'
 import { CheckboxField, SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
 import { Modal } from '@/shared/ui/Modal'
@@ -14,16 +17,40 @@ import { DeleteButton, FormActions, FormError, Published, QueryState, TABLE, TAB
 export default function ServicesTab() {
   const { data, isLoading, error } = useCmsList<CmsService>('services')
   const [editing, setEditing] = useState<CmsService | 'new' | null>(null)
+  const reorder = useReorder()
+  // While dragging, the rows follow the pointer; the order is saved when the row is dropped.
+  const [dragged, setDragged] = useState<{ id: number; rows: CmsService[] } | null>(null)
+  const rows = dragged?.rows ?? reorder.pending ?? data
+
+  const moveTo = (list: CmsService[], id: number, to: number) => {
+    const from = list.findIndex((s) => s.id === id)
+    if (from === to || to < 0 || to >= list.length) return list
+    const next = [...list]
+    next.splice(to, 0, ...next.splice(from, 1))
+    return next
+  }
+  const save = (next: CmsService[]) => {
+    if (next.some((s, i) => s.id !== data?.[i]?.id)) reorder.mutate(next)
+  }
 
   return (
     <div>
-      <TabHeader title="Services" intro="Each service gets its own page on the website." onAdd={() => setEditing('new')} addLabel="Add service" />
+      <TabHeader
+        title="Services"
+        intro="Each service gets its own page on the website. Drag a row by its handle, or use the arrows, to change the order on the website."
+        onAdd={() => setEditing('new')}
+        addLabel="Add service"
+      />
       <QueryState isLoading={isLoading} error={error} />
-      {data && (
+      <FormError error={reorder.error} />
+      {rows && (
         <div className={TABLE_WRAP}>
           <table className={TABLE}>
             <thead className={THEAD}>
               <tr>
+                <th className="w-10 px-2 py-3">
+                  <span className="sr-only">Drag to reorder</span>
+                </th>
                 <th className="px-4 py-3">Service</th>
                 <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">From</th>
@@ -32,8 +59,37 @@ export default function ServicesTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {data.map((s) => (
-                <tr key={s.id} className="cursor-pointer hover:bg-brand-50" onClick={() => setEditing(s)}>
+              {rows.map((s, i) => (
+                <tr
+                  key={s.id}
+                  className={`cursor-pointer hover:bg-brand-50 ${dragged?.id === s.id ? 'bg-brand-50 opacity-60' : ''}`}
+                  onClick={() => setEditing(s)}
+                  onDragOver={(e) => {
+                    if (!dragged) return
+                    e.preventDefault()
+                    if (dragged.id !== s.id) setDragged({ ...dragged, rows: moveTo(dragged.rows, dragged.id, i) })
+                  }}
+                  onDrop={(e) => e.preventDefault()}
+                >
+                  <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
+                    <span
+                      draggable={!reorder.isPending}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', String(s.id))
+                        e.dataTransfer.setDragImage(e.currentTarget.closest('tr')!, 20, 20)
+                        setDragged({ id: s.id, rows })
+                      }}
+                      onDragEnd={() => {
+                        if (dragged) save(dragged.rows)
+                        setDragged(null)
+                      }}
+                      title="Drag to move"
+                      className="grid size-8 cursor-grab place-items-center rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700 active:cursor-grabbing"
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       {s.cover_image ? (
@@ -52,7 +108,26 @@ export default function ServicesTab() {
                   <td className="px-4 py-3">
                     <Published on={s.is_published} />
                   </td>
-                  <td className="px-4 py-3 text-stone-500">{s.order}</td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1 text-stone-500">
+                      <span className="w-5 tabular-nums">{i + 1}</span>
+                      {[
+                        { to: i - 1, Icon: ArrowUp, label: 'Move up' },
+                        { to: i + 1, Icon: ArrowDown, label: 'Move down' },
+                      ].map(({ to, Icon, label }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-label={`${label}: ${s.name}`}
+                          disabled={to < 0 || to >= rows.length || reorder.isPending}
+                          onClick={() => save(moveTo(rows, s.id, to))}
+                          className="grid size-8 place-items-center rounded hover:bg-stone-100 hover:text-stone-800 disabled:opacity-30"
+                        >
+                          <Icon className="size-4" />
+                        </button>
+                      ))}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -161,4 +236,19 @@ function ServiceForm({ service, onDone }: { service: CmsService | null; onDone: 
       </div>
     </form>
   )
+}
+
+/** Saves the whole order at once; the table shows the new order while it saves. */
+function useReorder() {
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async (rows: CmsService[]) => (await api.post<CmsService[]>('/cms/services/reorder/', { ids: rows.map((s) => s.id) })).data,
+    onSuccess: (saved) => queryClient.setQueryData(['cms', 'services'], saved),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['cms', 'services'] })
+      // So the public site shows the new order in this browser straight away.
+      queryClient.invalidateQueries({ queryKey: ['public'] })
+    },
+  })
+  return { ...mutation, pending: mutation.isPending ? mutation.variables : undefined }
 }

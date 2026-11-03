@@ -8,7 +8,7 @@ class EventType(models.TextChoices):
     ENGAGEMENT = "ENGAGEMENT", "Engagement"
     RECEPTION = "RECEPTION", "Reception"
     BIRTHDAY = "BIRTHDAY", "Birthday"
-    BABY_SHOWER = "BABY_SHOWER", "Baby shower / Seemantham"
+    BABY_SHOWER = "BABY_SHOWER", "Baby shower / Puberty"
     HOUSEWARMING = "HOUSEWARMING", "Housewarming"
     CORPORATE = "CORPORATE", "Corporate event"
     TRADITIONAL = "TRADITIONAL", "Puja & traditional"

@@ -171,6 +171,7 @@ class GalleryImage(TimeStampedModel):
     is_published = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=0)
     is_watermarked = models.BooleanField(default=False, editable=False)
+    has_logo = models.BooleanField(default=False, editable=False)
 
     class Meta:
         ordering = ["order", "-created_at"]
@@ -180,9 +181,9 @@ class GalleryImage(TimeStampedModel):
         if self.image and not self.image._committed:
             stamped = watermarked(self.image.file, self.image.name)
             self.image.save(stamped.name, stamped, save=False)
-            self.is_watermarked = True
+            self.is_watermarked = self.has_logo = True
             if kwargs.get("update_fields") is not None:
-                kwargs["update_fields"] = {*kwargs["update_fields"], "image", "is_watermarked"}
+                kwargs["update_fields"] = {*kwargs["update_fields"], "image", "is_watermarked", "has_logo"}
         super().save(*args, **kwargs)
 
     def __str__(self):

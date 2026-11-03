@@ -1,9 +1,10 @@
 import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Count
 from rest_framework import generics, mixins, status, viewsets
-from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -186,6 +187,17 @@ class CmsServiceViewSet(CmsMixin, viewsets.ModelViewSet):
     serializer_class = s.CmsServiceSerializer
     search_fields = ["name", "short_description"]
     filterset_fields = ["category", "is_published"]
+
+    @action(detail=False, methods=["post"])
+    def reorder(self, request):
+        """Saves a dragged order: `ids` lists every service, first to last."""
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or sorted(ids) != sorted(Service.objects.values_list("id", flat=True)):
+            raise ValidationError({"ids": "Send every service once, in the new order."})
+        with transaction.atomic():
+            for order, pk in enumerate(ids):
+                Service.objects.filter(pk=pk).update(order=order)
+        return Response(s.CmsServiceSerializer(self.get_queryset(), many=True, context={"request": request}).data)
 
 
 class CmsServiceImageViewSet(CmsMixin, viewsets.ModelViewSet):

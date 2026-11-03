@@ -24,6 +24,7 @@ interface Values {
   agreed_amount: string
   coordinator: string
   coordinator_text: string
+  coordinator_phone: string
   notes: string
 }
 
@@ -87,6 +88,7 @@ export function BookingForm({ booking, clientId, onDone }: { booking?: Booking; 
       />
       <TextField label="Handover time" hint="When the decor is handed over to the client" type="time" {...register('start_time')} />
       <TextField label="Coordinator" placeholder="Type the coordinator's name" {...register('coordinator_text')} />
+      <TextField label="Coordinator number" type="tel" placeholder="98765 43210" {...register('coordinator_phone')} />
       <Controller
         control={control}
         name="setup_date"

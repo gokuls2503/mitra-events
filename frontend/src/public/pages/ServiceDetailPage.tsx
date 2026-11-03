@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  ArrowRight,
   Armchair,
   Baby,
   BadgeCheck,
@@ -495,7 +496,15 @@ function ServiceSections({ service, related }: { service: Service; related: Gall
       id: 'albums',
       tab: 'Albums',
       title: 'Albums',
-      body: <Album photos={photos} />,
+      // A taste of the work here; the full collection is on the Gallery page.
+      body: (
+        <>
+          <Album photos={photos.slice(0, 3)} />
+          <Link to="/gallery" className="mt-5 inline-flex min-h-11 items-center gap-1 font-semibold text-brand-700 hover:underline">
+            View more <ArrowRight className="size-4" />
+          </Link>
+        </>
+      ),
     },
   ]
   const sections = candidates.filter((section): section is Section => Boolean(section))

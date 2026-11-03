@@ -213,6 +213,20 @@ class TestCmsPermissions:
         assert res.data["inclusions"] == ["Stage", "Lights"]
         assert client.patch("/api/v1/cms/settings/", {"tagline": "New"}, format="json").data["tagline"] == "New"
 
+    def test_reorder_services(self, client):
+        login_as(client, Role.MANAGER)
+        a, b, c = (Service.objects.create(name=n, category=EventType.WEDDING, short_description="x", order=i) for i, n in enumerate("ABC"))
+        res = client.post("/api/v1/cms/services/reorder/", {"ids": [c.pk, a.pk, b.pk]}, format="json")
+        assert res.status_code == 200, res.data
+        assert [x["name"] for x in res.data] == ["C", "A", "B"]
+        assert [x["name"] for x in client.get("/api/v1/website/services/").data] == ["C", "A", "B"]
+        # Every service, each once: a partial or repeated list is refused and changes nothing.
+        assert client.post("/api/v1/cms/services/reorder/", {"ids": [a.pk, b.pk]}, format="json").status_code == 400
+        assert client.post("/api/v1/cms/services/reorder/", {"ids": [a.pk, a.pk, b.pk]}, format="json").status_code == 400
+        assert list(Service.objects.values_list("name", flat=True)) == ["C", "A", "B"]
+        login_as(client, Role.STAFF)
+        assert client.post("/api/v1/cms/services/reorder/", {"ids": [a.pk, b.pk, c.pk]}, format="json").status_code == 403
+
     def test_cms_sees_unpublished(self, client):
         login_as(client, Role.MANAGER)
         website_models.Testimonial.objects.create(client_name="Hidden", quote="q", is_published=False)

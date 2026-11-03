@@ -68,6 +68,7 @@ class Lead(EventTypesMixin, AuditedModel):
         INSTAGRAM = "INSTAGRAM", "Instagram"
         FACEBOOK = "FACEBOOK", "Facebook"
         REFERRAL = "REFERRAL", "Referral"
+        HALL_REFERRAL = "HALL_REFERRAL", "Hall referral"
         OTHER = "OTHER", "Other"
 
     name = models.CharField(max_length=120)
@@ -89,6 +90,9 @@ class Lead(EventTypesMixin, AuditedModel):
     coordinator = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="coordinated_leads"
     )
+    # Typed by hand on Edit enquiry and carried to the event; `coordinator` above is the app user.
+    coordinator_text = models.CharField("coordinator", max_length=120, blank=True)
+    coordinator_phone = models.CharField(max_length=20, blank=True)
     guest_count = models.PositiveIntegerField(null=True, blank=True)
     budget = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True)
     message = models.TextField(blank=True)
@@ -212,6 +216,7 @@ class Booking(EventTypesMixin, AuditedModel):
     )
     # Typed by hand and shown on the event; `coordinator` above is the app user who gets access and tasks.
     coordinator_text = models.CharField("coordinator", max_length=120, blank=True)
+    coordinator_phone = models.CharField(max_length=20, blank=True)
     notes = models.TextField(blank=True)
 
     class Meta:

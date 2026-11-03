@@ -79,11 +79,14 @@ export function ClientPicker({
   label = 'Client *',
   onChange,
   disabled,
+  hidePhone,
 }: {
   value: Pick<Client, 'id' | 'name' | 'phone'> | null
   label?: string
   onChange: (client: Client | null) => void
   disabled?: boolean
+  /** The form shows the number in a box of its own. */
+  hidePhone?: boolean
 }) {
   const id = useId()
   const [text, setText] = useState('')
@@ -107,7 +110,7 @@ export function ClientPicker({
         <p className="mb-1 text-sm font-medium text-stone-700">{label}</p>
         <div className="flex items-center gap-2 rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm">
           <span className="flex-1">
-            <strong>{value.name}</strong> <span className="text-stone-500">{prettyPhone(value.phone)}</span>
+            <strong>{value.name}</strong> {!hidePhone && <span className="text-stone-500">{prettyPhone(value.phone)}</span>}
           </span>
           {!disabled && (
             <button type="button" onClick={() => onChange(null)} className="text-xs text-brand-700 hover:underline">

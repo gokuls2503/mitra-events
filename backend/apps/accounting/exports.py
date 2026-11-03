@@ -116,14 +116,21 @@ def reference_photo(lead):
 
 
 def document_photos(doc, kind: str, lead) -> list[str]:
-    """Images under the client details: a quotation's own (up to two, side by side), else the
-    lead's reference photo."""
+    """Images under the client details: a quotation's own, else the lead's reference photo."""
+    from .models import QuotationImage
+
     if kind == "quotation":
         own = [Path(i.image.path).as_uri() for i in doc.images.all() if i.image and Path(i.image.path).exists()]
         if own:
-            return own[:2]
+            return own[: QuotationImage.MAX_PER_QUOTATION]
     photo = reference_photo(lead)
     return [photo] if photo else []
+
+
+def photo_rows(photos: list[str]) -> list[list[str]]:
+    """How the photos sit on the page: up to three share a row; four make two pairs; five are two above three."""
+    split = {4: 2, 5: 2}.get(len(photos))
+    return [photos[:split], photos[split:]] if split else [photos] if photos else []
 
 
 def letterpad_context(doc, kind: str) -> dict:
@@ -145,7 +152,7 @@ def letterpad_context(doc, kind: str) -> dict:
     event_type = ""
     if kind == "quotation":
         source = booking or lead
-        event_type = doc.get_event_type_display() if doc.event_type else (source.event_types_label if source else "")
+        event_type = doc.event_types_label or (source.event_types_label if source else "")
 
     if booking is not None:
         venue, dates = booking.venue, event_dates(booking.event_date, booking.end_date)
@@ -171,7 +178,7 @@ def letterpad_context(doc, kind: str) -> dict:
         "event_type": event_type,
         "venue": venue,
         "event_dates": dates,
-        "photos": document_photos(doc, kind, lead),
+        "photo_rows": photo_rows(document_photos(doc, kind, lead)),
         "doc_date": dmy(doc.invoice_date if kind == "invoice" else doc.date),
         "second_date": dmy(doc.due_date if kind == "invoice" else doc.valid_until),
         "payments": payments,

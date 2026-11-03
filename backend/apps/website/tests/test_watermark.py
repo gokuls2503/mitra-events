@@ -35,17 +35,23 @@ def stored_bytes(item):
     return Path(item.image.path).read_bytes()
 
 
-def centred_only(original, stored):
-    """The middle of the photo changed; its corners didn't. A one-off name, not a pattern."""
-    a, b = Image.open(io.BytesIO(original)).convert("RGB"), Image.open(io.BytesIO(stored)).convert("RGB")
+def changed(before, after):
+    """Which parts of the photo were stamped: the centred name, the top-left logo, and anywhere else."""
+    a, b = Image.open(io.BytesIO(before)).convert("RGB"), Image.open(io.BytesIO(after)).convert("RGB")
     assert a.size == b.size
-    box = ImageChops.difference(a, b).point(lambda v: 255 if v > 24 else 0).getbbox()
-    assert box, "nothing was stamped"
-    left, top, right, bottom = box
-    return left > a.width * 0.2 and right < a.width * 0.8 and top > a.height * 0.3 and bottom < a.height * 0.7
+    marks = ImageChops.difference(a, b).convert("L").point(lambda v: 255 if v > 24 else 0)
+    w, h = a.size
+    centre, logo = (round(w * 0.2), round(h * 0.3), round(w * 0.8), round(h * 0.7)), (0, 0, round(w * 0.2), round(h * 0.25))
+    rest = marks.copy()
+    for box in (centre, logo):
+        rest.paste(0, box)
+    return {"centre": bool(marks.crop(centre).getbbox()), "logo": bool(marks.crop(logo).getbbox()), "elsewhere": bool(rest.getbbox())}
 
 
-def test_upload_gets_one_centred_name_and_only_once():
+BOTH = {"centre": True, "logo": True, "elsewhere": False}
+
+
+def test_upload_gets_the_centred_name_and_logo_only_once():
     c, original = manager(), photo_bytes()
     category = GalleryCategory.objects.create(name="Watermark test")
     res = c.post(
@@ -55,8 +61,8 @@ def test_upload_gets_one_centred_name_and_only_once():
     )
     assert res.status_code == 201, res.data
     item = GalleryImage.objects.get()
-    assert item.is_watermarked and item.image.name.endswith(".jpg")
-    assert centred_only(original, stored_bytes(item))
+    assert item.is_watermarked and item.has_logo and item.image.name.endswith(".jpg")
+    assert changed(original, stored_bytes(item)) == BOTH
 
     before = stored_bytes(item)
     assert c.patch(f"/api/v1/cms/gallery/{item.pk}/", {"caption": "Stage"}, format="json").status_code == 200
@@ -85,10 +91,20 @@ def test_command_stamps_old_photos_keeps_originals_and_skips_stamped(tmp_path):
 
     call_command("watermark_gallery", backup_dir=str(backups))
     old.refresh_from_db()
-    assert old.is_watermarked and (backups / "old.jpg").read_bytes() == original
-    assert centred_only(original, stored_bytes(old))
+    assert old.is_watermarked and old.has_logo and (backups / "old.jpg").read_bytes() == original
+    assert changed(original, stored_bytes(old)) == BOTH
 
     stamped = stored_bytes(old)
     call_command("watermark_gallery", backup_dir=str(backups))
     old.refresh_from_db()
     assert stored_bytes(old) == stamped and (backups / "old.jpg").read_bytes() == original
+
+
+def test_command_adds_only_the_logo_to_photos_that_already_have_the_name(tmp_path):
+    named = GalleryImage.objects.create(image=SimpleUploadedFile("named.jpg", photo_bytes()))
+    GalleryImage.objects.filter(pk=named.pk).update(has_logo=False)  # stamped before the logo existed
+    before = stored_bytes(named)
+
+    call_command("watermark_gallery", backup_dir=str(tmp_path / "originals"))
+    named.refresh_from_db()
+    assert named.has_logo and changed(before, stored_bytes(named)) == {"centre": False, "logo": True, "elsewhere": False}

@@ -179,6 +179,8 @@ def save_quotation(*, items: list[dict], user=None, instance: Quotation | None =
         data["client"] = data.get("client") or crm.client_for_lead(lead, user=user)
         if not data.get("booking") and getattr(lead, "booking", None) and lead.booking.client_id == data["client"].id:
             data["booking"] = lead.booking
+        if data.get("booking") and data["booking"].client_id != data["client"].id:
+            raise ValidationError({"booking": "That event belongs to a different client."})
     created = instance is None
     if instance is None:
         date = data.get("date") or timezone.localdate()

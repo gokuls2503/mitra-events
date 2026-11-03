@@ -165,6 +165,14 @@ function LeadDetail({ lead }: { lead: Lead }) {
                   </span>
                 ))}
               </Item>
+              {lead.coordinator_text && <Item label="Event coordinator">{lead.coordinator_text}</Item>}
+              {lead.coordinator_phone && (
+                <Item label="Coordinator number">
+                  <a href={telLink(lead.coordinator_phone)} className="whitespace-nowrap text-brand-700 tabular-nums hover:underline">
+                    {prettyPhone(lead.coordinator_phone)}
+                  </a>
+                </Item>
+              )}
               {(lead.package_name || lead.service_name) && <Item label="Interested in">{lead.package_name ?? lead.service_name}</Item>}
               {lead.source_page && <Item label="Website page">{lead.source_page}</Item>}
             </dl>
@@ -528,12 +536,10 @@ function Timeline({ lead, canWrite }: { lead: Lead; canWrite: boolean }) {
 
 function EditLeadForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
   const update = useCrmMutation(crm.updateLead)
-  const { data: team } = useTeam()
   const [mobiles, setMobiles] = useState(() => [lead.phone, ...lead.extra_phones].map(localDigits))
   const { register, handleSubmit, control } = useForm({
     defaultValues: {
       name: lead.name,
-      email: lead.email,
       event_types: lead.event_types.length ? lead.event_types : lead.event_type ? [lead.event_type] : [],
       budget: lead.budget ?? '',
       event_date: lead.event_date ?? '',
@@ -543,7 +549,8 @@ function EditLeadForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
       venue: lead.venue,
       guest_count: lead.guest_count ? String(lead.guest_count) : '',
       venue_address: lead.venue_address,
-      coordinator: lead.coordinator ? String(lead.coordinator) : '',
+      coordinator_text: lead.coordinator_text,
+      coordinator_phone: lead.coordinator_phone ? localDigits(lead.coordinator_phone) : '',
       message: lead.message,
     },
   })
@@ -566,7 +573,6 @@ function EditLeadForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
             setup_time: v.setup_time || null,
             guest_count: v.guest_count ? Number(v.guest_count) : null,
             budget: v.budget || null,
-            coordinator: v.coordinator ? Number(v.coordinator) : null,
           },
           { onSuccess: onDone },
         ),
@@ -596,12 +602,8 @@ function EditLeadForm({ lead, onDone }: { lead: Lead; onDone: () => void }) {
       <TextField label="Venue" {...register('venue')} />
       <TextField label="Guests" type="number" min={1} {...register('guest_count')} />
       <TextAreaField label="Venue address" rows={2} className="sm:col-span-2" {...register('venue_address')} />
-      <SelectField
-        label="Event coordinator"
-        options={[{ value: '', label: 'Not yet assigned' }, ...(team ?? []).map((m) => ({ value: String(m.id), label: m.full_name }))]}
-        {...register('coordinator')}
-      />
-      <TextField label="Email" type="email" placeholder="client@email.com" {...register('email')} />
+      <TextField label="Event coordinator" placeholder="Type the coordinator's name" {...register('coordinator_text')} />
+      <TextField label="Event coordinator number" type="tel" inputMode="numeric" placeholder="98765 43210" {...register('coordinator_phone')} />
       <TextAreaField label="Notes" rows={3} className="sm:col-span-2" {...register('message')} />
       <div className="space-y-3 sm:col-span-2">
         <FormError error={update.error} />

@@ -118,7 +118,7 @@ export function AdminLayout() {
         </header>
         {/* The scrolling area has no padding of its own (the inner div has it): sticky bars such as
             "Save settings" respect a scroller's padding and would otherwise float above the bottom. */}
-        <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
+        <main ref={mainRef} className="relative min-h-0 flex-1 overflow-y-auto print:overflow-visible">
           <div className="p-4 lg:p-8">
             {/* Keyed by path so navigating away from a crashed page recovers. */}
             <ErrorBoundary key={pathname}>

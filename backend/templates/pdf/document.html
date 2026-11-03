@@ -62,12 +62,13 @@
   .stamp.draft { border-color: #a16207; color: #a16207; }
   .party-extra { font-size: 9pt; color: #555; }
 
-  /* One photo, or two side by side (the second to the right of the first). */
-  /* Equal tiles across the full text width; a single photo takes the left half. */
-  table.photos { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 9mm; table-layout: fixed; }
-  table.photos td { width: 50%; padding: 0 3mm 0 0; vertical-align: top; }
-  table.photos td + td { padding: 0 0 0 3mm; }
+  /* Rows of equal tiles across the full text width; a single photo takes the left half. */
+  table.photos { width: 100%; border-collapse: collapse; margin-top: 9mm; table-layout: fixed; page-break-inside: avoid; }
+  table.photos + table.photos { margin-top: 5mm; }
+  table.photos td { padding: 0; vertical-align: top; }
+  table.photos td.gap { width: 6mm; }
   .photo { display: block; width: 100%; height: 50mm; object-fit: cover; border: 0.25mm solid #e4e1e6; border-radius: 1.2mm; }
+  table.photos.three .photo { height: 34mm; }
 
   /* Items and totals share one table so every "--" and amount lines up in the same columns. */
   table.bill { width: 100%; border-collapse: collapse; margin-top: 11mm; }
@@ -146,12 +147,14 @@
         {% else %}
           <div class="doc-type">QUOTATION</div>
           {{ doc.number }}
+          <br>Date: {{ doc_date }}
+          {% if second_date %}<br>Valid until: {{ second_date }}{% endif %}
         {% endif %}
       </td>
     </tr>
   </table>
 
-  {% if photos %}<table class="photos"><tr>{% for src in photos %}<td><img class="photo" src="{{ src }}" alt=""></td>{% endfor %}{% if photos|length == 1 %}<td></td>{% endif %}</tr></table>{% endif %}
+  {% for row in photo_rows %}<table class="photos{% if row|length == 3 %} three{% endif %}"><tr>{% for src in row %}{% if not forloop.first %}<td class="gap"></td>{% endif %}<td><img class="photo" src="{{ src }}" alt=""></td>{% endfor %}{% if row|length == 1 %}<td class="gap"></td><td></td>{% endif %}</tr></table>{% endfor %}
 
   <!-- Items: description · "--" · amount (before GST); unpriced items show a dashed line -->
   <table class="bill">
@@ -186,9 +189,10 @@
     {% if kind == "invoice" %}<tr class="words"><td colspan="3">{{ amount_words }}</td></tr>{% endif %}
   </table>
 
-  {% if doc.notes or kind == "invoice" and company.bank_name or kind == "invoice" and company.upi_id %}
+  {% if doc.notes or kind == "quotation" and doc.terms or kind == "invoice" and company.bank_name or kind == "invoice" and company.upi_id %}
   <div class="notes">
     {% if doc.notes %}<h3>Notes</h3><pre>{{ doc.notes }}</pre>{% endif %}
+    {% if kind == "quotation" and doc.terms %}<h3>Terms and conditions</h3><pre>{{ doc.terms }}</pre>{% endif %}
     {% if kind == "invoice" and company.bank_name %}
       <h3>Payment details</h3>
       <pre>Bank: {{ company.bank_name }}{% if company.bank_branch %}, {{ company.bank_branch }}{% endif %} · A/c name: {{ company.bank_account_name|default:company.legal_name }} · A/c no: {{ company.bank_account_number }} · IFSC: {{ company.bank_ifsc }}{% if company.upi_id %} · UPI: {{ company.upi_id }}{% endif %}</pre>

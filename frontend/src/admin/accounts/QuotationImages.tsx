@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { MAX_QUOTATION_IMAGES, type PhotoDraft } from './quotationPhotos'
 
-/** Up to two photos for the quotation PDF; the second prints to the right of the first. */
+/** Up to five photos for the quotation PDF, printed in this order. */
 export function QuotationImages({ value, onChange }: { value: PhotoDraft[]; onChange: (v: PhotoDraft[]) => void }) {
   const inputId = useId()
   const [error, setError] = useState<string | null>(null)
@@ -36,15 +36,15 @@ export function QuotationImages({ value, onChange }: { value: PhotoDraft[]; onCh
       <div className="mb-3">
         <h2 className="font-sans text-sm font-semibold tracking-wide text-stone-800 uppercase">Images</h2>
         <p className="mt-0.5 text-xs text-stone-500">
-          Up to {MAX_QUOTATION_IMAGES}, printed under the client details on the quotation. A second image sits to the right of the first.
+          Up to {MAX_QUOTATION_IMAGES}, printed in this order under the client details on the quotation.
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {value.map((p, n) => (
           <figure key={p.key} className="relative overflow-hidden rounded-lg bg-stone-100 ring-1 ring-stone-200">
             <img src={p.url} alt={`Quotation image ${n + 1}`} className="aspect-[16/9] w-full object-cover" />
             <figcaption className="absolute top-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">
-              {n === 0 ? 'Left' : 'Right'}
+              {n + 1}
               {p.file && ' · not saved yet'}
             </figcaption>
             <button

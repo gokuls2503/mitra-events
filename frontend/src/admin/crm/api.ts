@@ -5,7 +5,7 @@ import { api } from '@/shared/api/client'
 import type { Role } from '@/shared/auth/roles'
 
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'MEETING' | 'QUOTATION_SENT' | 'NEGOTIATION' | 'WON' | 'LOST'
-export type LeadSource = 'WEBSITE' | 'ESTIMATOR' | 'PHONE' | 'WHATSAPP' | 'WALK_IN' | 'INSTAGRAM' | 'FACEBOOK' | 'REFERRAL' | 'OTHER'
+export type LeadSource = 'WEBSITE' | 'ESTIMATOR' | 'PHONE' | 'WHATSAPP' | 'WALK_IN' | 'INSTAGRAM' | 'FACEBOOK' | 'REFERRAL' | 'HALL_REFERRAL' | 'OTHER'
 export type BookingStatus = 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 export type FollowUpKind = 'CALL' | 'WHATSAPP' | 'MEETING' | 'SITE_VISIT' | 'EMAIL'
 export type ActivityKind = 'CREATED' | 'STATUS' | 'ASSIGNED' | 'NOTE' | 'CALL' | 'WHATSAPP' | 'MEETING' | 'FOLLOW_UP' | 'CONVERTED' | 'QUOTATION'
@@ -46,6 +46,8 @@ export interface Lead {
   venue: string
   venue_address: string
   coordinator: number | null
+  coordinator_text: string
+  coordinator_phone: string
   guest_count: number | null
   budget: string | null
   message: string
@@ -151,6 +153,7 @@ export interface Booking {
   coordinator_name: string | null
   /** Typed-in coordinator shown on the event (coordinator / coordinator_name is the app user). */
   coordinator_text: string
+  coordinator_phone: string
   notes: string
   created_at: string
 }

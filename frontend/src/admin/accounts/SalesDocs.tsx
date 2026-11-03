@@ -207,7 +207,7 @@ export function QuotationsPage() {
 
 /**
  * /accounts/{invoices|quotations}/new?booking=ID prefills client, event and one line from the booking.
- * /accounts/quotations/new?lead=ID does the same from a lead, and links the quotation to it.
+ * /accounts/quotations/new?lead=ID does the same from a lead, and links the quotation to it. Quotations start with no lines.
  */
 export function NewDocumentPage({ kind }: { kind: 'invoice' | 'quotation' }) {
   const [params] = useSearchParams()
@@ -224,38 +224,28 @@ export function NewDocumentPage({ kind }: { kind: 'invoice' | 'quotation' }) {
   const defaultTax = String(Number(taxRates.find((t) => t.id === settings.default_tax_rate)?.rate ?? 18))
   const prefill: Prefill | undefined = l
     ? {
-        lead: { id: l.id, name: l.name, phone: l.phone, eventTypes: l.event_type_label },
+        lead: { id: l.id, name: l.name, phone: l.phone, eventTypes: l.event_types.length ? l.event_types : l.event_type ? [l.event_type] : [] },
         client: l.client ? { id: l.client, name: l.client_name ?? l.name, phone: l.phone } : null,
         booking: l.booking?.id ?? null,
-        items: [
-          {
-            description: [`${l.event_type_label || 'Event'} decoration`, [l.event_date && fmtDate(l.event_date), l.venue].filter(Boolean).join(', ')]
-              .filter(Boolean)
-              .join(' — '),
-            sac: settings.default_sac,
-            quantity: '1',
-            unit: 'Nos',
-            rate: l.budget ?? '',
-            discount: '0',
-            tax_rate: defaultTax,
-          },
-        ],
       }
     : b
     ? {
         client: { id: b.client, name: b.client_name, phone: b.client_phone },
         booking: b.id,
-        items: [
-          {
-            description: `${b.event_type_label} decoration — ${b.title} (${fmtDate(b.event_date)}, ${b.venue})`,
-            sac: settings.default_sac,
-            quantity: '1',
-            unit: 'Nos',
-            rate: b.agreed_amount ?? '',
-            discount: '0',
-            tax_rate: defaultTax,
-          },
-        ],
+        items:
+          kind === 'invoice'
+            ? [
+                {
+                  description: `${b.event_type_label} decoration — ${b.title} (${fmtDate(b.event_date)}, ${b.venue})`,
+                  sac: settings.default_sac,
+                  quantity: '1',
+                  unit: 'Nos',
+                  rate: b.agreed_amount ?? '',
+                  discount: '0',
+                  tax_rate: defaultTax,
+                },
+              ]
+            : undefined,
       }
     : undefined
   return (
@@ -565,7 +555,7 @@ function DocBody({ doc }: { doc: Invoice | Quotation }) {
         </div>
       </div>
       {'images' in doc && doc.images.length > 0 && (
-        <div className="mb-5 grid max-w-xl grid-cols-2 gap-3" aria-label="Images on the quotation PDF">
+        <div className="mb-5 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Images on the quotation PDF">
           {doc.images.map((img, n) => (
             <img key={img.id} src={img.image} alt={`Quotation image ${n + 1}`} className="aspect-[16/9] w-full rounded-lg object-cover ring-1 ring-stone-200" />
           ))}

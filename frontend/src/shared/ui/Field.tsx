@@ -1,5 +1,6 @@
 import clsx from 'clsx'
-import { forwardRef, useId, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
+import { forwardRef, useId, useState, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 /** Shared input look (also used by DateField). */
 export const CONTROL =
@@ -15,24 +16,39 @@ interface WrapperProps {
 type InputProps = InputHTMLAttributes<HTMLInputElement> & WrapperProps
 
 export const TextField = forwardRef<HTMLInputElement, InputProps>(function TextField(
-  { label, error, hint, className, id, ...rest },
+  { label, error, hint, className, id, type, ...rest },
   ref,
 ) {
   const autoId = useId()
   const inputId = id ?? autoId
+  const [showPassword, setShowPassword] = useState(false)
+  const isPassword = type === 'password'
   return (
     <div className={className}>
       <label htmlFor={inputId} className="mb-1 block text-sm font-medium text-stone-700">
         {label}
       </label>
-      <input
-        ref={ref}
-        id={inputId}
-        aria-invalid={!!error}
-        aria-describedby={error ? `${inputId}-err` : undefined}
-        className={clsx(CONTROL, error && 'border-red-400')}
-        {...rest}
-      />
+      <div className="relative">
+        <input
+          ref={ref}
+          id={inputId}
+          type={isPassword && showPassword ? 'text' : type}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${inputId}-err` : undefined}
+          className={clsx(CONTROL, error && 'border-red-400', isPassword && 'pr-10 [&::-ms-reveal]:hidden')}
+          {...rest}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword((shown) => !shown)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-lg text-stone-500 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-brand-500"
+          >
+            {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        )}
+      </div>
       {error ? (
         <p id={`${inputId}-err`} className="mt-1 text-xs text-red-600">
           {error}

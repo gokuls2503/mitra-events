@@ -98,6 +98,7 @@ interface SalesDoc {
   id: number
   client: number
   client_name: string
+  client_phone: string
   client_gstin: string
   booking: number | null
   booking_title: string | null
@@ -124,6 +125,7 @@ export interface Quotation extends SalesDoc {
   lead: number | null
   lead_name: string | null
   event_type: EventType | ''
+  event_types: EventType[]
   event_type_label: string
   date: string
   valid_until: string | null
@@ -165,6 +167,7 @@ export interface Receipt {
   number: string
   client: number
   client_name: string
+  client_phone: string
   booking: number | null
   booking_title: string | null
   date: string

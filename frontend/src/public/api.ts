@@ -28,7 +28,7 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   ENGAGEMENT: 'Engagement',
   RECEPTION: 'Reception',
   BIRTHDAY: 'Birthday',
-  BABY_SHOWER: 'Baby shower / Seemantham',
+  BABY_SHOWER: 'Baby shower / Puberty',
   HOUSEWARMING: 'Housewarming',
   CORPORATE: 'Corporate event',
   TRADITIONAL: 'Puja & traditional',

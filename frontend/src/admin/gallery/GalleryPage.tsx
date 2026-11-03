@@ -11,6 +11,7 @@ import { Spinner } from '@/shared/ui/Spinner'
 import { compressImage } from '../crm/references/compress'
 import { UNCATEGORISED, uploadGalleryImage, useDeleteImage, useGalleryCategories, useGalleryImages, useRefreshGallery, useToggleFeatured, type GalleryImage } from './api'
 import { CategoryMenu, type Selection } from './CategoryMenu'
+import { GalleryPreview } from './GalleryPreview'
 
 type Tab = 'all' | 'featured' | 'other'
 
@@ -37,6 +38,7 @@ export default function GalleryPage() {
   const images = useGalleryImages()
   const [tab, setTab] = useState<Tab>('all')
   const [upload, setUpload] = useState<UploadState | null>(null)
+  const [preview, setPreview] = useState<number | null>(null) // index into the images shown
 
   const select = (s: Selection) => {
     setParams(s === 'all' ? {} : { category: String(s) }, { replace: true })
@@ -153,17 +155,19 @@ export default function GalleryPage() {
         )}
         {shown.length > 0 && (
           <ul className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {shown.map((img) => (
-              <Tile key={img.id} image={img} />
+            {shown.map((img, i) => (
+              <Tile key={img.id} image={img} onPreview={() => setPreview(i)} />
             ))}
           </ul>
         )}
       </section>
+      {/* Clamped, so deleting the last image while it's open can't point past the end. */}
+      <GalleryPreview images={shown} index={preview !== null && preview < shown.length ? preview : null} onChange={setPreview} />
     </div>
   )
 }
 
-function Tile({ image }: { image: GalleryImage }) {
+function Tile({ image, onPreview }: { image: GalleryImage; onPreview: () => void }) {
   const toggle = useToggleFeatured()
   const remove = useDeleteImage()
   const [confirming, setConfirming] = useState(false)
@@ -173,7 +177,9 @@ function Tile({ image }: { image: GalleryImage }) {
   return (
     <li>
       <div className="relative aspect-4/3 overflow-hidden rounded-xl bg-stone-100">
-        <img src={image.image} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+        <button type="button" onClick={onPreview} aria-label={`Preview ${name}`} className="block size-full cursor-zoom-in">
+          <img src={image.image} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+        </button>
         <button
           type="button"
           onClick={() => toggle.mutate(image)}

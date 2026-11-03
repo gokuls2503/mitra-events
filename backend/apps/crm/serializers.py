@@ -80,6 +80,7 @@ class LeadSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
     phone = IndianPhoneField()
     extra_phones = serializers.ListField(child=IndianPhoneField(), max_length=2, required=False)
     coordinator = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
+    coordinator_phone = IndianPhoneField(required=False, allow_blank=True)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
     source_label = serializers.CharField(source="get_source_display", read_only=True)
     event_types = event_types_field()
@@ -112,6 +113,8 @@ class LeadSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
             "venue",
             "venue_address",
             "coordinator",
+            "coordinator_text",
+            "coordinator_phone",
             "guest_count",
             "budget",
             "message",
@@ -265,6 +268,7 @@ class BookingSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
     client_phone = serializers.CharField(source="client.phone", read_only=True)
     coordinator = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
     coordinator_name = serializers.CharField(source="coordinator.full_name", read_only=True, default=None)
+    coordinator_phone = IndianPhoneField(required=False, allow_blank=True)
     package = serializers.PrimaryKeyRelatedField(queryset=Package.objects.all(), required=False, allow_null=True)
     package_name = serializers.CharField(source="package.name", read_only=True, default=None)
     lead_id = serializers.IntegerField(source="lead.id", read_only=True, default=None)
@@ -300,6 +304,7 @@ class BookingSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
             "coordinator",
             "coordinator_name",
             "coordinator_text",
+            "coordinator_phone",
             "notes",
             "created_at",
             "updated_at",
@@ -358,6 +363,7 @@ class ConvertLeadSerializer(EventTypesFieldsMixin, serializers.Serializer):
     agreed_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True, min_value=0)
     coordinator = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
     coordinator_text = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    coordinator_phone = IndianPhoneField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
 
     client_name = serializers.CharField(required=False, allow_blank=True, max_length=120)

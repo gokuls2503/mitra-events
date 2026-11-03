@@ -208,7 +208,7 @@ class TestQuotations:
         )
         assert res.status_code == 201, res.data
         assert res.data["number"] == f"QT/{FY}/0001" and res.data["total"] == "59000.00"
-        assert "advance" in res.data["terms"]  # default quotation terms applied
+        assert "valid until the date mentioned above" in res.data["terms"] and "market-priced" in res.data["terms"]  # default quotation terms applied
         res = c.post(f"/api/v1/accounts/quotations/{res.data['id']}/convert/")
         assert res.status_code == 201 and res.data["status"] == "DRAFT" and res.data["total"] == "59000.00"
         assert Quotation.objects.get().status == Quotation.Status.INVOICED
@@ -229,6 +229,7 @@ class TestQuotations:
         assert res.status_code == 201, res.data
         lead.refresh_from_db()
         assert lead.client and res.data["client"] == lead.client_id and res.data["lead_name"] == "Danu"
+        assert res.data["client_phone"] == "+919000000001"
         # Saving is only preparing it: the lead stays new until the quotation is marked as sent.
         assert lead.status == "NEW" and lead.activities.filter(kind="QUOTATION").exists()
         assert c.post(f"/api/v1/accounts/quotations/{res.data['id']}/set-status/", {"status": "SENT"}, format="json").status_code == 200
@@ -250,11 +251,37 @@ class TestQuotations:
             name="Asha", phone="+919000000003", event_type="ENGAGEMENT", event_types=["ENGAGEMENT", "RECEPTION"], source="PHONE"
         )
         q = services.save_quotation(lead=lead, items=[item()])
-        assert q.event_type == "" and letterpad_context(q, "quotation")["event_type"] == "Engagement, Reception"
+        assert q.event_types == [] and letterpad_context(q, "quotation")["event_type"] == "Engagement, Reception"
         res = api(setup["manager"]).patch(f"/api/v1/accounts/quotations/{q.pk}/", {"event_type": "WEDDING"}, format="json")
         assert res.status_code == 200 and res.data["event_type_label"] == "Wedding"
         q.refresh_from_db()
         assert letterpad_context(q, "quotation")["event_type"] == "Wedding"
+
+    def test_quotation_with_several_event_types(self, setup):
+        from apps.accounting.exports import letterpad_context
+
+        q = services.save_quotation(client=setup["client"], items=[item()])
+        url = f"/api/v1/accounts/quotations/{q.pk}/"
+        c = api(setup["manager"])
+        res = c.patch(url, {"event_types": ["RECEPTION", "BIRTHDAY"]}, format="json")
+        assert res.status_code == 200, res.data
+        assert (res.data["event_types"], res.data["event_type"], res.data["event_type_label"]) == (["RECEPTION", "BIRTHDAY"], "RECEPTION", "Reception, Birthday")
+        q.refresh_from_db()
+        assert letterpad_context(q, "quotation")["event_type"] == "Reception, Birthday"
+        assert c.patch(url, {"event_types": ["RECEPTION", "RECEPTION"]}, format="json").status_code == 400
+        res = c.patch(url, {"event_types": []}, format="json")
+        assert (res.data["event_type"], res.data["event_type_label"]) == ("", "")
+
+    def test_quotation_from_lead_can_take_another_clients_event(self, setup):
+        other = crm_services.create_booking(client=setup["client"], title="Other", event_type="BIRTHDAY", event_date=datetime.date(2030, 1, 1), venue="V")
+        lead = crm_services.create_lead(name="Harini", phone="+919000000002", event_type="BIRTHDAY", source="PHONE")
+        c = api(setup["manager"])
+        body = {"lead": lead.pk, "booking": other.pk, "items": [{"description": "Decor", "quantity": "1", "rate": "100", "tax_rate": "18"}]}
+        # Without the event's client it would sit under the lead's own client.
+        assert c.post("/api/v1/accounts/quotations/", body, format="json").status_code == 400
+        res = c.post("/api/v1/accounts/quotations/", {**body, "client": setup["client"].pk}, format="json")
+        assert res.status_code == 201, res.data
+        assert (res.data["client"], res.data["booking"], res.data["lead"]) == (setup["client"].pk, other.pk, lead.pk)
 
     def test_quotation_needs_client_or_lead(self, setup):
         res = api(setup["manager"]).post("/api/v1/accounts/quotations/", {"items": [{"description": "x", "quantity": "1", "rate": "1", "tax_rate": "18"}]}, format="json")
@@ -560,18 +587,19 @@ class TestQuotationImages:
     def media(self, settings, tmp_path):
         settings.MEDIA_ROOT = tmp_path
 
-    def test_upload_two_then_limit_then_delete(self, setup):
+    def test_upload_five_then_limit_then_delete(self, setup):
         q = services.save_quotation(client=setup["client"], items=[item()])
         c = api(setup["manager"])
         url = f"/api/v1/accounts/quotations/{q.pk}/images/"
         first = c.post(url, {"image": _jpeg()}, format="multipart")
         assert first.status_code == 201, first.data
-        assert c.post(url, {"image": _jpeg()}, format="multipart").status_code == 201
-        third = c.post(url, {"image": _jpeg()}, format="multipart")
-        assert third.status_code == 400 and "at most 2" in str(third.data)
+        for _ in range(4):
+            assert c.post(url, {"image": _jpeg()}, format="multipart").status_code == 201
+        sixth = c.post(url, {"image": _jpeg()}, format="multipart")
+        assert sixth.status_code == 400 and "at most 5" in str(sixth.data)
         assert [i["id"] for i in c.get(f"/api/v1/accounts/quotations/{q.pk}/").data["images"]][0] == first.data["id"]
         assert c.delete(f"{url}{first.data['id']}/").status_code == 204
-        assert len(c.get(f"/api/v1/accounts/quotations/{q.pk}/").data["images"]) == 1
+        assert len(c.get(f"/api/v1/accounts/quotations/{q.pk}/").data["images"]) == 4
 
     def test_rejects_non_images(self, setup):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -581,13 +609,19 @@ class TestQuotationImages:
         res = api(setup["manager"]).post(f"/api/v1/accounts/quotations/{q.pk}/images/", {"image": bad}, format="multipart")
         assert res.status_code == 400
 
-    def test_pdf_with_two_images(self, setup):
+    def test_pdf_with_five_images(self, setup):
         from apps.accounting import exports
 
         q = services.save_quotation(client=setup["client"], items=[item()])
         c = api(setup["manager"])
-        for _ in range(2):
+        for _ in range(5):
             c.post(f"/api/v1/accounts/quotations/{q.pk}/images/", {"image": _jpeg()}, format="multipart")
-        assert len(exports.document_photos(q, "quotation", None)) == 2
+        assert len(exports.document_photos(q, "quotation", None)) == 5
         res = c.get(f"/api/v1/accounts/quotations/{q.pk}/pdf/")
         assert res.status_code == 200 and res.content[:4] == b"%PDF"
+
+    @pytest.mark.parametrize("count, rows", [(0, []), (1, [1]), (2, [2]), (3, [3]), (4, [2, 2]), (5, [2, 3])])
+    def test_photo_layout(self, count, rows):
+        from apps.accounting import exports
+
+        assert [len(row) for row in exports.photo_rows(list("abcde")[:count])] == rows

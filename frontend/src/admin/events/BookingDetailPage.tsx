@@ -112,6 +112,13 @@ function BookingDetail({ booking: b }: { booking: Booking }) {
               )}
             </Item>
             <Item label="Coordinator">{b.coordinator_text || '—'}</Item>
+            {b.coordinator_phone && (
+              <Item label="Coordinator number">
+                <a href={telLink(b.coordinator_phone)} className="text-brand-700 tabular-nums hover:underline">
+                  {prettyPhone(b.coordinator_phone)}
+                </a>
+              </Item>
+            )}
             <Item label="Package">{b.package_name ?? '—'}</Item>
             <Item label="Amount" className="print:hidden">
               {b.agreed_amount ? `${formatINR(b.agreed_amount)} + GST` : <span className="text-stone-500">Not set</span>}

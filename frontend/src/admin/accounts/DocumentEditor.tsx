@@ -1,17 +1,19 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
+import clsx from 'clsx'
 import { useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 
-import { EVENT_TYPE_LABELS, type EventType } from '@/public/api'
 import { todayISO } from '@/shared/dates'
 import { prettyPhone } from '@/shared/format'
 import { Button } from '@/shared/ui/Button'
-import { SelectField, TextAreaField } from '@/shared/ui/Field'
+import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
 import { DateField } from '@/shared/ui/DateField'
+import { MultiSelectField } from '@/shared/ui/MultiSelectField'
 
 import { useBookings, type Client } from '../crm/api'
+import { EVENT_TYPES } from '../crm/labels'
 import { FormError } from '../kit'
 import { accounts, useAccountsMutation, useSettings, useTaxRates, type Invoice, type Item, type Quotation } from './api'
 import { previewLine, previewTotals, rupees } from './calc'
@@ -26,7 +28,7 @@ interface Values {
   second_date: string // due date (invoice) or valid until (quotation)
   place_of_supply: string
   booking: string
-  event_type: EventType | '' // quotations only
+  event_types: string[] // quotations only
   notes: string
   terms: string
   items: Item[]
@@ -37,7 +39,7 @@ export interface Prefill {
   booking?: number | null
   items?: Item[]
   /** A quotation started from a lead: linked to it, and without a client the lead's client is found or created on save. */
-  lead?: { id: number; name: string; phone: string; eventTypes?: string }
+  lead?: { id: number; name: string; phone: string; eventTypes?: string[] }
 }
 
 export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoice | Quotation; prefill?: Prefill }) {
@@ -50,8 +52,9 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
   const [photoSync, setPhotoSync] = useState<{ busy: boolean; error: unknown }>({ busy: false, error: null })
   const { data: taxRates } = useTaxRates()
   const [client, setClient] = useState<Pick<Client, 'id' | 'name' | 'phone'> | null>(
-    doc ? { id: doc.client, name: doc.client_name, phone: '' } : prefill?.client ?? null,
+    doc ? { id: doc.client, name: doc.client_name, phone: doc.client_phone } : prefill?.client ?? null,
   )
+  const lead = doc ? undefined : prefill?.lead
   const { data: bookings } = useBookings({ client: client?.id, page_size: 100, ordering: '-event_date' }) // only meaningful with a client
   const save = useAccountsMutation(
     async (body: Record<string, unknown>): Promise<{ id: number }> =>
@@ -77,10 +80,10 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
       second_date: secondDate,
       place_of_supply: doc?.place_of_supply ?? settings?.state_code ?? '33',
       booking: String(doc?.booking ?? prefill?.booking ?? ''),
-      event_type: doc && 'event_type' in doc ? doc.event_type : '',
+      event_types: doc && 'event_types' in doc ? doc.event_types : prefill?.lead?.eventTypes ?? [],
       notes: doc?.notes ?? '',
       terms: doc?.terms ?? '',
-      items: doc?.items.map((i) => ({ ...i, tax_rate: String(Number(i.tax_rate)) })) ?? prefill?.items ?? [blankItem()],
+      items: doc?.items.map((i) => ({ ...i, tax_rate: String(Number(i.tax_rate)) })) ?? prefill?.items ?? (kind === 'invoice' ? [blankItem()] : []), // a new quotation starts empty: lines come from Add line
     },
   })
   const { fields, append, remove } = useFieldArray({ control, name: 'items' })
@@ -89,22 +92,15 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
   // Controlled: the event list loads after the form, and an uncontrolled <select> would show
   // the first option instead of the pre-filled event.
   const bookingValue = useWatch({ control, name: 'booking' })
-  const eventType = useWatch({ control, name: 'event_type' })
+  const eventTypes = useWatch({ control, name: 'event_types' })
   const intra = place === (settings?.state_code ?? '33')
 
-  // Picking another event type also renames the first line when it still reads "<old type> decoration…".
-  const enquiryTypes = prefill?.lead?.eventTypes
-  const changeEventType = (next: EventType | '') => {
-    const label = (t: EventType | '') => (t ? EVENT_TYPE_LABELS[t] : enquiryTypes || '')
-    const [before, after] = [label(eventType), label(next)]
-    const first = items[0]?.description ?? ''
-    if (before && after && first.startsWith(`${before} decoration`)) setValue('items.0.description', after + first.slice(before.length), { shouldDirty: true })
-    setValue('event_type', next, { shouldDirty: true })
-  }
   const totals = previewTotals(items, intra)
 
-  const lead = doc ? undefined : prefill?.lead
-  const canSave = Boolean(client || lead)
+  // Invoices need SAC, quantity and unit for GST; a quotation's lines keep the defaults without showing them.
+  const isInvoice = kind === 'invoice'
+  const canSave = Boolean((client || lead) && fields.length)
+  const [pickingClient, setPickingClient] = useState(false)
 
   const submit = (v: Values) => {
     const body: Record<string, unknown> = {
@@ -122,7 +118,7 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
       if (v.second_date) body.due_date = v.second_date
     } else {
       body.date = v.date
-      body.event_type = v.event_type
+      body.event_types = v.event_types
       if (v.second_date) body.valid_until = v.second_date
     }
     save.mutate(body, {
@@ -144,33 +140,51 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
     })
   }
 
+  // A quotation has no event box: its event comes from the lead or booking, so it can't stay on another client.
+  const pickClient = (next: Pick<Client, 'id' | 'name' | 'phone'> | null) => {
+    setClient(next)
+    if (!isInvoice) setValue('booking', '', { shouldDirty: true })
+  }
+
   const taxOptions = (taxRates ?? []).filter((t) => t.is_active).map((t) => ({ value: String(Number(t.rate)), label: `${Number(t.rate)}%` }))
   const stateOptions = (settings?.states ?? []).map((s) => ({ value: s.code, label: `${s.code} - ${s.name}` }))
 
   return (
     <form onSubmit={handleSubmit(submit)} className="space-y-6">
       <section className="grid gap-4 rounded-xl border border-stone-200 bg-white p-5 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="sm:col-span-2 lg:col-span-1">
-          <ClientPicker value={client} onChange={setClient} disabled={!!doc} />
+        <div>
+          {lead && !client && !pickingClient ? (
+            // Shown as chosen; Change opens the search. The client itself is found or created on save.
+            <ClientPicker value={{ id: 0, name: lead.name, phone: lead.phone }} onChange={() => setPickingClient(true)} hidePhone />
+          ) : (
+            <ClientPicker value={client} onChange={pickClient} disabled={!!doc} hidePhone />
+          )}
           {lead && !client && (
             <p className="mt-2 rounded-lg bg-gold-100 px-3 py-2 text-sm text-gold-700">
-              From lead <span className="font-medium">{lead.name}</span> ({prettyPhone(lead.phone)}). They'll be added as a client when you save, or pick an existing
-              client above.
+              From lead <span className="font-medium">{lead.name}</span>. They'll be added as a client when you save
+              {pickingClient ? ', or pick an existing client above.' : '.'}
             </p>
           )}
         </div>
-        <SelectField
-          label="Event (optional)"
-          // A lead's quotation often comes before any booking: it's linked to the booking when the lead is converted.
-          disabled={!client && !lead}
-          hint={lead && !bookingValue ? "Quoting before booking is fine. It's linked to the event when this lead becomes a booking." : undefined}
-          options={[
-            { value: '', label: lead ? 'No event yet (before booking)' : client ? 'Not linked to an event' : 'Choose a client first' },
-            ...(client ? bookings?.results ?? [] : []).map((b) => ({ value: String(b.id), label: `${b.number} · ${b.title}` })),
-          ]}
-          value={bookingValue}
-          onChange={(e) => setValue('booking', e.target.value, { shouldDirty: true })}
-        />
+        <TextField label="Client number" readOnly tabIndex={-1} value={prettyPhone((client ?? lead)?.phone ?? '')} className="[&_input]:bg-stone-50" />
+        {kind === 'quotation' && (
+          <div>
+            <MultiSelectField label="Event type" placeholder="Not specified" options={EVENT_TYPES} value={eventTypes} onChange={(v) => setValue('event_types', v, { shouldDirty: true })} />
+            <p className="mt-1 text-xs text-stone-500">Printed under EVENT on the quotation.</p>
+          </div>
+        )}
+        {isInvoice && (
+          <SelectField
+            label="Event (optional)"
+            disabled={!client}
+            options={[
+              { value: '', label: client ? 'Not linked to an event' : 'Choose a client first' },
+              ...(client ? bookings?.results ?? [] : []).map((b) => ({ value: String(b.id), label: `${b.number} · ${b.title}` })),
+            ]}
+            value={bookingValue}
+            onChange={(e) => setValue('booking', e.target.value, { shouldDirty: true })}
+          />
+        )}
         <SelectField label="Place of supply" options={stateOptions.length ? stateOptions : [{ value: '33', label: '33 - Tamil Nadu' }]} hint={intra ? 'Same state: CGST + SGST' : 'Other state: IGST'} {...register('place_of_supply')} />
         <Controller
           control={control}
@@ -192,30 +206,22 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
             />
           )}
         />
-        {kind === 'quotation' && (
-          <SelectField
-            label="Event type"
-            hint="Printed under EVENT on the quotation."
-            options={[
-              { value: '', label: enquiryTypes ? `As in the enquiry (${enquiryTypes})` : 'Not specified' },
-              ...Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => ({ value, label })),
-            ]}
-            value={eventType}
-            onChange={(e) => changeEventType(e.target.value as EventType | '')}
-          />
-        )}
       </section>
 
       <section className="rounded-xl border border-stone-200 bg-white p-5">
         <h2 className="mb-3 font-sans text-sm font-semibold tracking-wide text-stone-800 uppercase">Items</h2>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[56rem] text-sm">
+          <table className={clsx('w-full text-sm', isInvoice ? 'min-w-[56rem]' : 'min-w-[40rem]')}>
             <thead className="text-left text-xs text-stone-500">
               <tr>
-                <th className="w-[34%] pb-2 font-medium">Description</th>
-                <th className="pb-2 font-medium">SAC</th>
-                <th className="pb-2 font-medium">Qty</th>
-                <th className="pb-2 font-medium">Unit</th>
+                <th className={clsx('pb-2 font-medium', isInvoice && 'w-[34%]')}>Description</th>
+                {isInvoice && (
+                  <>
+                    <th className="pb-2 font-medium">SAC</th>
+                    <th className="pb-2 font-medium">Qty</th>
+                    <th className="pb-2 font-medium">Unit</th>
+                  </>
+                )}
                 <th className="pb-2 font-medium">Rate (₹)</th>
                 <th className="pb-2 font-medium">Discount (₹)</th>
                 <th className="pb-2 font-medium">GST</th>
@@ -224,6 +230,13 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
               </tr>
             </thead>
             <tbody>
+              {!fields.length && (
+                <tr>
+                  <td colSpan={9} className="py-3 text-stone-500">
+                    No lines yet. Use Add line to start.
+                  </td>
+                </tr>
+              )}
               {fields.map((f, idx) => {
                 const line = items[idx] ? previewLine(items[idx], intra) : null
                 const cell = 'w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none'
@@ -232,15 +245,19 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
                     <td className="py-1 pr-2">
                       <input aria-label={`Line ${idx + 1} description`} required className={cell} placeholder="e.g. Reception stage decor" {...register(`items.${idx}.description`)} />
                     </td>
-                    <td className="w-24 py-1 pr-2">
-                      <input aria-label={`Line ${idx + 1} SAC`} className={cell} {...register(`items.${idx}.sac`)} />
-                    </td>
-                    <td className="w-20 py-1 pr-2">
-                      <input aria-label={`Line ${idx + 1} quantity`} type="number" step="0.01" min="0.01" required className={cell} {...register(`items.${idx}.quantity`)} />
-                    </td>
-                    <td className="w-20 py-1 pr-2">
-                      <input aria-label={`Line ${idx + 1} unit`} className={cell} {...register(`items.${idx}.unit`)} />
-                    </td>
+                    {isInvoice && (
+                      <>
+                        <td className="w-24 py-1 pr-2">
+                          <input aria-label={`Line ${idx + 1} SAC`} className={cell} {...register(`items.${idx}.sac`)} />
+                        </td>
+                        <td className="w-20 py-1 pr-2">
+                          <input aria-label={`Line ${idx + 1} quantity`} type="number" step="0.01" min="0.01" required className={cell} {...register(`items.${idx}.quantity`)} />
+                        </td>
+                        <td className="w-20 py-1 pr-2">
+                          <input aria-label={`Line ${idx + 1} unit`} className={cell} {...register(`items.${idx}.unit`)} />
+                        </td>
+                      </>
+                    )}
                     <td className="w-32 py-1 pr-2">
                       <input aria-label={`Line ${idx + 1} rate`} type="number" step="0.01" min="0" required className={cell} {...register(`items.${idx}.rate`)} />
                     </td>
@@ -258,7 +275,7 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
                     </td>
                     <td className="w-32 py-2 text-right tabular-nums">{line ? <Money value={rupees(line.amount)} /> : '—'}</td>
                     <td className="w-8 py-1 pl-1">
-                      <button type="button" onClick={() => remove(idx)} disabled={fields.length === 1} aria-label={`Remove line ${idx + 1}`} className="rounded p-1.5 text-stone-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30">
+                      <button type="button" onClick={() => remove(idx)} disabled={isInvoice && fields.length === 1} aria-label={`Remove line ${idx + 1}`} className="rounded p-1.5 text-stone-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30">
                         <Trash2 className="size-4" />
                       </button>
                     </td>
@@ -296,12 +313,19 @@ export function DocumentEditor({ kind, doc, prefill }: { kind: Kind; doc?: Invoi
 
       <section className="grid gap-4 rounded-xl border border-stone-200 bg-white p-5 sm:grid-cols-2">
         <TextAreaField label="Notes (printed)" rows={3} {...register('notes')} />
-        <TextAreaField label="Terms" rows={3} hint={doc ? undefined : 'Leave blank to use the default terms from Settings.'} {...register('terms')} />
+        {isInvoice ? (
+          <TextAreaField label="Terms" rows={3} hint={doc ? undefined : 'Leave blank to use the default terms from Settings.'} {...register('terms')} />
+        ) : (
+          <div>
+            <p className="mb-1 text-sm font-medium text-stone-700">Terms and conditions</p>
+            <p className="text-sm whitespace-pre-line text-stone-700">{doc?.terms || settings?.quotation_terms}</p>
+          </div>
+        )}
       </section>
 
       <FormError error={save.error ?? photoSync.error} />
       {photoSync.error != null && <p className="text-sm text-amber-700">The quotation was saved, but an image couldn't be uploaded. Try saving again.</p>}
-      {!canSave && <p className="text-sm text-amber-700">Choose a client to save.</p>}
+      {!canSave && <p className="text-sm text-amber-700">{client || lead ? 'Add a line to save.' : 'Choose a client to save.'}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={() => navigate(-1)}>
           Cancel

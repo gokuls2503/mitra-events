@@ -72,7 +72,7 @@ function CompanyForm({ profile }: { profile: CompanyProfile }) {
           </div>
         </Section>
 
-        <Section title="Terms" intro="Default terms for new documents (each document can be edited).">
+        <Section title="Terms" intro="Default terms for new documents. Quotations always use these; each invoice can be edited.">
           <TextAreaField label="Invoice terms" rows={4} {...register('invoice_terms')} />
           <TextAreaField label="Quotation terms" rows={4} {...register('quotation_terms')} />
         </Section>

@@ -19,7 +19,7 @@ const heroText: Variants = {
   show: (i: number) => ({ opacity: 1, y: 0, transition: { delay: 0.15 + i * 0.12, duration: 0.7, ease: [0.22, 1, 0.36, 1] } }),
 }
 
-const HOME_SERVICE_CATEGORIES = ['WEDDING', 'RECEPTION', 'BIRTHDAY']
+const HOME_SERVICE_CATEGORIES = ['WEDDING', 'RECEPTION', 'ENGAGEMENT']
 
 export default function HomePage() {
   useHeroNav()
@@ -28,7 +28,7 @@ export default function HomePage() {
   const { data: gallery } = useQuery(galleryQuery)
   const { data: testimonials } = useQuery(testimonialsQuery)
 
-  // Wedding, reception and birthday, in that order; the rest are one click away on Services.
+  // Wedding, reception and engagement, in that order; the rest are one click away on Services.
   const featuredServices = HOME_SERVICE_CATEGORIES.flatMap((category) => services?.find((s) => s.category === category) ?? [])
   // Three equal tiles, one row.
   const featuredGallery = gallery?.filter((g) => g.is_featured).slice(0, 3) ?? []

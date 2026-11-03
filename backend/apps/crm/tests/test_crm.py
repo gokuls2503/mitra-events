@@ -186,6 +186,13 @@ class TestScoping:
         assert res.status_code == 201, res.data
         assert Lead.objects.get().assigned_to == team["staff"]
 
+    def test_hall_referral_source(self, team):
+        c = api(team["manager"])
+        res = c.post("/api/v1/crm/leads/", {"name": "Hall lead", "phone": "9876543210", "source": "HALL_REFERRAL"}, format="json")
+        assert res.status_code == 201, res.data
+        assert res.data["source_label"] == "Hall referral"
+        assert [r["name"] for r in c.get("/api/v1/crm/leads/", {"source": "HALL_REFERRAL"}).data["results"]] == ["Hall lead"]
+
     def test_staff_cannot_reassign_or_delete(self, team):
         l = lead(assigned_to=team["staff"])
         c = api(team["staff"])
@@ -368,6 +375,13 @@ class TestEnquiryDetails:
         assert res.data["start_time"] == "18:30:00" and res.data["coordinator"] == team["staff"].pk
         assert res.data["venue_address"] == "KSP Complex, Sundrapuram"
 
+    def test_typed_coordinator_and_number(self, team):
+        res = self.edit(team, lead(), coordinator_text="Ravi", coordinator_phone="98765 43210")
+        assert res.status_code == 200, res.data
+        assert (res.data["coordinator_text"], res.data["coordinator_phone"]) == ("Ravi", "+919876543210")
+        assert self.edit(team, lead(), coordinator_phone="12345").status_code == 400
+        assert self.edit(team, lead(), coordinator_phone="").status_code == 200
+
     def test_at_most_two_extra_numbers(self, team):
         res = self.edit(team, lead(), extra_phones=["9445742696", "9894606292", "9000000003"])
         assert res.status_code == 400 and "extra_phones" in res.data
@@ -463,10 +477,13 @@ class TestEventCard:
         c = api(team["manager"])
         res = c.post(
             f"/api/v1/crm/leads/{lead().pk}/convert/",
-            booking_payload(setup_date=(NEXT_MONTH - datetime.timedelta(days=1)).isoformat(), setup_time="09:00", coordinator_text="Ravi"),
+            booking_payload(
+                setup_date=(NEXT_MONTH - datetime.timedelta(days=1)).isoformat(), setup_time="09:00", coordinator_text="Ravi", coordinator_phone="9876543210"
+            ),
             format="json",
         )
         assert res.status_code == 201, res.data
+        assert res.data["coordinator_phone"] == "+919876543210"
         assert (res.data["setup_date"], res.data["setup_time"], res.data["coordinator_text"]) == (
             (NEXT_MONTH - datetime.timedelta(days=1)).isoformat(),
             "09:00:00",

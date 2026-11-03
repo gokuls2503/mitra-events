@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.core.fields import RelativeImageField
 from apps.crm.models import Booking, Client, Lead
+from apps.crm.serializers import EventTypesFieldsMixin, event_types_field
 from apps.operations.models import Vendor
 
 from .models import (
@@ -160,6 +161,7 @@ class SalesDocumentSerializer(serializers.ModelSerializer):
     client = serializers.PrimaryKeyRelatedField(queryset=Client.objects.all())
     booking = serializers.PrimaryKeyRelatedField(queryset=Booking.objects.all(), required=False, allow_null=True)
     client_name = serializers.CharField(source="client.name", read_only=True)
+    client_phone = serializers.CharField(source="client.phone", read_only=True)
     client_gstin = serializers.CharField(source="client.gstin", read_only=True)
     booking_title = serializers.CharField(source="booking.title", read_only=True, default=None)
     booking_number = serializers.CharField(source="booking.number", read_only=True, default=None)
@@ -184,16 +186,17 @@ class QuotationImageSerializer(serializers.ModelSerializer):
         fields = ["id", "image"]
 
 
-class QuotationSerializer(SalesDocumentSerializer):
+class QuotationSerializer(EventTypesFieldsMixin, SalesDocumentSerializer):
     # From a lead, the client may be left out: the lead's client is found or created on save.
     client = serializers.PrimaryKeyRelatedField(queryset=Client.objects.all(), required=False)
     lead = serializers.PrimaryKeyRelatedField(queryset=Lead.objects.all(), required=False, allow_null=True)
     lead_name = serializers.CharField(source="lead.name", read_only=True, default=None)
-    event_type_label = serializers.CharField(source="get_event_type_display", read_only=True)
+    event_types = event_types_field()
+    event_type_label = serializers.CharField(source="event_types_label", read_only=True)
     images = QuotationImageSerializer(many=True, read_only=True)
 
     def validate(self, attrs):
-        attrs = super().validate(attrs)
+        attrs = self.sync_event_types(super().validate(attrs))
         if not self.instance and not attrs.get("client") and not attrs.get("lead"):
             raise serializers.ValidationError({"client": "Choose a client."})
         if "lead" in attrs and self.instance and self.instance.lead_id and attrs["lead"] != self.instance.lead:
@@ -203,8 +206,8 @@ class QuotationSerializer(SalesDocumentSerializer):
     class Meta:
         model = Quotation
         fields = [
-            "id", "number", "client", "client_name", "client_gstin", "booking", "booking_title", "booking_number",
-            "lead", "lead_name", "event_type", "event_type_label", "date", "valid_until", "status", "status_label", "place_of_supply", "place_of_supply_name",
+            "id", "number", "client", "client_name", "client_phone", "client_gstin", "booking", "booking_title", "booking_number",
+            "lead", "lead_name", "event_type", "event_types", "event_type_label", "date", "valid_until", "status", "status_label", "place_of_supply", "place_of_supply_name",
             "notes", "terms", "items", "images", *TOTAL_FIELDS, "created_at",
         ]
         read_only_fields = ["number", "status", *TOTAL_FIELDS, "created_at"]
@@ -230,7 +233,7 @@ class InvoiceSerializer(SalesDocumentSerializer):
     class Meta:
         model = Invoice
         fields = [
-            "id", "number", "client", "client_name", "client_gstin", "booking", "booking_title", "booking_number",
+            "id", "number", "client", "client_name", "client_phone", "client_gstin", "booking", "booking_title", "booking_number",
             "quotation", "quotation_number", "invoice_date", "due_date", "status", "status_label",
             "place_of_supply", "place_of_supply_name", "notes", "terms", "items", *TOTAL_FIELDS,
             "amount_paid", "balance_due", "billing_name", "billing_address", "billing_gstin", "billing_phone",

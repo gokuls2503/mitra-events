@@ -1,7 +1,7 @@
 import { compressImage } from '../crm/references/compress'
 import { accounts } from './api'
 
-export const MAX_QUOTATION_IMAGES = 2
+export const MAX_QUOTATION_IMAGES = 5
 
 /** A photo in the editor: already saved (id) or picked but not uploaded yet (file). */
 export interface PhotoDraft {
