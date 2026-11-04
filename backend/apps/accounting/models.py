@@ -13,6 +13,7 @@ from django.db import models
 
 from apps.core.choices import EventType
 from apps.core.models import AuditedModel, TimeStampedModel
+from apps.core.validators import validate_bill_file
 from apps.crm.models import EventTypesMixin
 
 from .states import GST_STATES
@@ -388,7 +389,7 @@ class Expense(AuditedModel):
         Ledger, null=True, blank=True, on_delete=models.PROTECT, related_name="+",
         help_text="Cash/bank it was paid from. Empty = on credit (owed to the vendor).",
     )
-    attachment = models.FileField(upload_to="bills/%Y/%m/", blank=True)
+    attachment = models.FileField(upload_to="bills/%Y/%m/", blank=True, validators=[validate_bill_file])
     journal = models.OneToOneField(JournalEntry, null=True, blank=True, on_delete=models.PROTECT, related_name="expense")
     is_cancelled = models.BooleanField(default=False)
 

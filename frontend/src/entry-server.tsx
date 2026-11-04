@@ -40,6 +40,8 @@ export async function render(url: string): Promise<RenderResult> {
         </QueryClientProvider>
       </HeadCollectorContext.Provider>
     </StrictMode>,
+    // Never split the page into chunks stitched together by inline scripts: the CSP forbids inline scripts.
+    { progressiveChunkSize: Number.POSITIVE_INFINITY },
   )
   const html = await streamToString(prelude)
   const site = queryClient.getQueryData<SiteSettings>(settingsQuery.queryKey)

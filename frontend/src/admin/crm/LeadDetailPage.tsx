@@ -185,7 +185,9 @@ function LeadDetail({ lead }: { lead: Lead }) {
                 {formatINR(lead.estimate.low)} – {formatINR(lead.estimate.high)}
               </p>
               <p className="text-xs text-stone-500">
-                {lead.estimate.guests} guests · {lead.estimate.tier} decor
+                {lead.estimate.area_sqft
+                  ? `${lead.estimate.width_ft} × ${lead.estimate.depth_ft} ft stage (${lead.estimate.area_sqft} sq ft)${lead.estimate.guests ? ` · ${lead.estimate.guests} guests` : ''}`
+                  : `${lead.estimate.guests} guests · ${lead.estimate.tier} decor`}
               </p>
               <ul className="mt-3 space-y-1 text-sm">
                 {lead.estimate.lines.map((l) => (

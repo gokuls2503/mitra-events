@@ -144,26 +144,28 @@ export interface EstimatorOptions {
     label: string
     description: string
     base_price: string
-    per_guest_rate: string
-    min_guests: number
-    max_guests: number
+    rate_per_sqft: string
+    min_sqft: number
+    max_sqft: number
   }[]
-  tiers: { id: number; name: string; description: string; multiplier: string }[]
   addons: { id: number; name: string; description: string; pricing: 'FLAT' | 'PER_GUEST'; price: string }[]
 }
 
 export interface EstimateInput {
   event_type: EventType
+  width_ft: number
+  depth_ft: number
   guests: number
-  tier: number
   addons: number[]
 }
 
 export interface EstimateResult {
   event_type: EventType
   event_type_label: string
+  width_ft: number
+  depth_ft: number
+  area_sqft: number
   guests: number
-  tier: string
   lines: { label: string; amount: number }[]
   total: number
   low: number

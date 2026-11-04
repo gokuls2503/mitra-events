@@ -567,6 +567,23 @@ def test_expense_attachment_upload(setup, tmp_path, settings):
     assert Expense.objects.get().total == D("1200.00")
 
 
+@pytest.mark.parametrize("name", ["bill.html", "bill.svg", "bill.js", "bill"])
+def test_expense_attachment_rejects_files_a_browser_could_run(setup, tmp_path, settings, name):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    settings.MEDIA_ROOT = tmp_path
+    res = api(setup["accountant"]).post(
+        "/api/v1/accounts/expenses/",
+        {
+            "date": TODAY.isoformat(), "expense_ledger": Ledger.objects.get(name="Transport").pk, "description": "Tempo",
+            "amount": "1200", "paid_from": setup["cash"].pk, "attachment": SimpleUploadedFile(name, b"<script>alert(1)</script>", content_type="text/html"),
+        },
+        format="multipart",
+    )
+    assert res.status_code == 400 and "attachment" in res.data
+    assert not Expense.objects.exists()
+
+
 # --- Quotation images ----------------------------------------------------------------------
 
 

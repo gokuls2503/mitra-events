@@ -45,7 +45,8 @@ function page({ html, head, state }) {
   const json = JSON.stringify(state).replace(/</g, '\\u003c')
   return template
     .replace(/<!--head:start-->[\s\S]*<!--head:end-->/, head)
-    .replace('<div id="root"></div>', `<div id="root">${html}</div>\n    <script>window.__RQ_STATE__=${json}</script>`)
+    // A JSON data block, not a script: it never runs, so the CSP can forbid inline scripts.
+    .replace('<div id="root"></div>', `<div id="root">${html}</div>\n    <script type="application/json" id="rq-state">${json}</script>`)
 }
 
 for (const route of routes) {

@@ -63,7 +63,7 @@ export function EnquiryForm({ defaultEventType = '', packageSlug, serviceSlug, e
       email: '',
       event_type: estimateInput?.event_type ?? defaultEventType,
       event_date: '',
-      guest_count: estimateInput ? String(estimateInput.guests) : '',
+      guest_count: estimateInput?.guests ? String(estimateInput.guests) : '',
       venue: '',
       message: '',
       website: '',

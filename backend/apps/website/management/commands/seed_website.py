@@ -19,7 +19,6 @@ from apps.website.gallery import category_for_event_type
 from apps.website.models import (
     EstimatorAddon,
     EstimatorEventType,
-    EstimatorTier,
     GalleryImage,
     Package,
     Service,
@@ -117,22 +116,8 @@ PACKAGES = [
      ["Mandap & reception stage", "Entrance, aisle and dining decor", "Premium fresh flowers", "Full lighting design", "Dedicated event coordinator"]),
 ]
 
-ESTIMATOR_EVENTS = [
-    (E.WEDDING, 90000, 120, 100, 2000),
-    (E.RECEPTION, 45000, 80, 100, 2000),
-    (E.ENGAGEMENT, 30000, 60, 50, 1000),
-    (E.BIRTHDAY, 10000, 40, 20, 500),
-    (E.BABY_SHOWER, 15000, 40, 20, 500),
-    (E.HOUSEWARMING, 10000, 30, 20, 500),
-    (E.CORPORATE, 35000, 90, 30, 2000),
-    (E.TRADITIONAL, 8000, 25, 20, 1000),
-]
-
-TIERS = [
-    ("Classic", "Elegant, budget-friendly styling", "1.00"),
-    ("Premium", "Richer florals, custom backdrops, more lighting", "1.40"),
-    ("Luxury", "Designer concepts, premium fresh flowers, full lighting design", "1.90"),
-]
+# Placeholder rates; the admin sets the real ones in Website content → Estimator.
+ESTIMATOR_EVENTS = [E.WEDDING, E.RECEPTION, E.ENGAGEMENT, E.BIRTHDAY, E.BABY_SHOWER, E.HOUSEWARMING, E.CORPORATE, E.TRADITIONAL]
 
 ADDONS = [
     ("Entrance arch & welcome board", "FLAT", 8000),
@@ -186,7 +171,7 @@ class Command(BaseCommand):
             self.stdout.write("Website content already exists. Use --reset to replace it.")
             return
         if reset:
-            for model in (Service, Package, GalleryImage, Testimonial, EstimatorEventType, EstimatorTier, EstimatorAddon):
+            for model in (Service, Package, GalleryImage, Testimonial, EstimatorEventType, EstimatorAddon):
                 model.objects.all().delete()
 
         site = SiteSettings.load()
@@ -249,12 +234,8 @@ class Command(BaseCommand):
                 client_name=name, event_type=et, event_location=loc, quote=quote, rating=5, is_featured=i < 3, order=i
             )
 
-        for i, (et, base, per_guest, mn, mx) in enumerate(ESTIMATOR_EVENTS):
-            EstimatorEventType.objects.create(
-                event_type=et, base_price=base, per_guest_rate=per_guest, min_guests=mn, max_guests=mx, order=i
-            )
-        for i, (name, desc, mult) in enumerate(TIERS):
-            EstimatorTier.objects.create(name=name, description=desc, multiplier=mult, order=i)
+        for i, et in enumerate(ESTIMATOR_EVENTS):
+            EstimatorEventType.objects.create(event_type=et, rate_per_sqft=25, order=i)
         for i, (name, pricing, price) in enumerate(ADDONS):
             EstimatorAddon.objects.create(name=name, pricing=pricing, price=price, order=i)
 

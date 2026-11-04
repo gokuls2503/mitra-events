@@ -77,6 +77,12 @@ ENV
   chown "$APP_USER:$APP_USER" "$BACKEND/.env"; chmod 600 "$BACKEND/.env"
 fi
 
+# Least privilege: only the app's own role (and postgres) may connect to its database.
+sudo -u postgres psql -q -v ON_ERROR_STOP=1 -c "REVOKE ALL ON DATABASE ${DB_NAME} FROM PUBLIC; GRANT CONNECT ON DATABASE ${DB_NAME} TO ${DB_USER};"
+PG_LISTEN="$(sudo -u postgres psql -tAc 'SHOW listen_addresses')"
+[[ "$PG_LISTEN" == "localhost" || "$PG_LISTEN" == "127.0.0.1" ]] \
+  || echo "WARNING: PostgreSQL listens on '${PG_LISTEN}'; it should be 'localhost' so the database is not reachable from outside."
+
 # ---------------------------------------------------------------- backend
 log "Backend: venv, migrate, collectstatic"
 sudo -u "$APP_USER" bash -c "
@@ -86,6 +92,7 @@ sudo -u "$APP_USER" bash -c "
   .venv/bin/pip install -q -r requirements.txt gunicorn
   export DJANGO_SETTINGS_MODULE=config.settings.prod
   .venv/bin/python manage.py migrate --noinput
+  .venv/bin/python manage.py createcachetable   # shared rate-limit counters
   .venv/bin/python manage.py collectstatic --noinput -v 0
   .venv/bin/python manage.py seed_materials   # adds missing starter materials only
   mkdir -p media
@@ -135,7 +142,37 @@ sudo -u "$APP_USER" bash -c "
 
 # ---------------------------------------------------------------- nginx
 log "Nginx"
+mkdir -p /etc/nginx/snippets
+
+# Browser security headers for the pages nginx serves itself (Django sets its own on /api).
+# CSP: only this site's scripts run (no inline scripts at all); styles and fonts also from Google
+# Fonts; the contact-page map frame from Google; nothing may frame this site.
+cat > /etc/nginx/snippets/mitra-security-headers.conf <<'NGINX'
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src https://www.google.com https://maps.google.com; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" always;
+NGINX
+
+cat > /etc/nginx/snippets/mitra-django-proxy.conf <<'NGINX'
+proxy_pass http://127.0.0.1:8000;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_read_timeout 120s;
+# Any add_header here stops the page headers above being added on top of Django's own.
+add_header X-Robots-Tag "noindex, nofollow" always;
+NGINX
+
 cat > /etc/nginx/sites-available/mitra-events <<NGINX
+# Rate limits per client IP: logins are slow by design, the rest of the API is generous.
+limit_req_zone \$binary_remote_addr zone=mitra_login:10m rate=10r/m;
+limit_req_zone \$binary_remote_addr zone=mitra_api:10m rate=20r/s;
+limit_req_status 429;
+
 server {
     listen 80;
     listen [::]:80;
@@ -143,25 +180,36 @@ server {
 
     root ${FRONTEND}/dist;
     client_max_body_size 25M;
+    server_tokens off;   # don't advertise the nginx version
 
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml text/plain;
 
-    # Django: API, docs, emergency admin
+    include /etc/nginx/snippets/mitra-security-headers.conf;
+
+    # Hidden files (.env, .git, ...) are never served; Let's Encrypt's .well-known stays reachable.
+    location ~ /\.(?!well-known) { return 404; }
+
+    # Login forms: 10 a minute per IP (a short burst of 5 is allowed for typos).
+    location = /api/v1/auth/login/  { limit_req zone=mitra_login burst=5 nodelay; include /etc/nginx/snippets/mitra-django-proxy.conf; }
+    location = /django-admin/login/  { limit_req zone=mitra_login burst=5 nodelay; include /etc/nginx/snippets/mitra-django-proxy.conf; }
+
+    # Django: API and emergency admin
     location ~ ^/(api|django-admin)/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 120s;
+        limit_req zone=mitra_api burst=60 nodelay;
+        include /etc/nginx/snippets/mitra-django-proxy.conf;
     }
 
     location /static/ { alias ${BACKEND}/staticfiles/; expires 30d; access_log off; }
     location /media/  { alias ${BACKEND}/media/;       expires 7d;  access_log off; }
 
-    # Hashed Vite bundles
-    location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; access_log off; }
+    # Hashed Vite bundles (an add_header here replaces the server's, so the headers are included again)
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        include /etc/nginx/snippets/mitra-security-headers.conf;
+        access_log off;
+    }
 
     # React admin — never prerendered
     location = /admin { try_files /spa.html =404; }

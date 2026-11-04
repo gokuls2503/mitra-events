@@ -7,18 +7,17 @@ import { CheckboxField, SelectField, TextField } from '@/shared/ui/Field'
 import { Modal } from '@/shared/ui/Modal'
 
 import { useCmsDelete, useCmsList, useCmsSave } from './cms'
-import { EVENT_TYPE_OPTIONS, type CmsEstimatorAddon, type CmsEstimatorEventType, type CmsEstimatorTier } from './types'
+import { EVENT_TYPE_OPTIONS, type CmsEstimatorAddon, type CmsEstimatorEventType } from './types'
 import { DeleteButton, FormActions, FormError, Published, QueryState, TABLE, TABLE_WRAP, TabHeader, THEAD } from '../kit'
 
 export default function EstimatorTab() {
   return (
     <div className="space-y-10">
       <div className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900 ring-1 ring-brand-100">
-        <strong>How the estimate is calculated:</strong> (base price + per-guest rate × guests) × decor multiplier + add-ons.
-        Visitors see a range from 10% below to 15% above that total, excluding GST.
+        <strong>How the estimate is calculated:</strong> base price + stage area (width × depth in sq ft) × rate per sq ft + add-ons. Visitors see a range from 10% below
+        to 15% above that total, excluding GST.
       </div>
       <EventTypes />
-      <Tiers />
       <Addons />
     </div>
   )
@@ -40,8 +39,8 @@ function EventTypes() {
               <tr>
                 <th className="px-4 py-3">Event</th>
                 <th className="px-4 py-3">Base price</th>
-                <th className="px-4 py-3">Per guest</th>
-                <th className="px-4 py-3">Guests</th>
+                <th className="px-4 py-3">Per sq ft</th>
+                <th className="px-4 py-3">Stage area</th>
                 <th className="px-4 py-3">Status</th>
               </tr>
             </thead>
@@ -50,9 +49,9 @@ function EventTypes() {
                 <tr key={e.id} className="cursor-pointer hover:bg-brand-50" onClick={() => setEditing(e)}>
                   <td className="px-4 py-3 font-medium">{e.label}</td>
                   <td className="px-4 py-3">{formatINR(e.base_price)}</td>
-                  <td className="px-4 py-3">{formatINR(e.per_guest_rate)}</td>
+                  <td className="px-4 py-3">{formatINR(e.rate_per_sqft)}</td>
                   <td className="px-4 py-3">
-                    {e.min_guests}–{e.max_guests}
+                    {e.min_sqft}–{e.max_sqft} sq ft
                   </td>
                   <td className="px-4 py-3">
                     <Published on={e.is_active} labels={['Active', 'Off']} />
@@ -68,7 +67,7 @@ function EventTypes() {
           <SimpleForm<CmsEstimatorEventType>
             resource="estimator/event-types"
             item={editing === 'new' ? null : editing}
-            defaults={{ event_type: 'WEDDING', description: '', base_price: '', per_guest_rate: '0', min_guests: 50, max_guests: 1500, is_active: true, order: 0 }}
+            defaults={{ event_type: 'WEDDING', description: '', base_price: '0', rate_per_sqft: '25', min_sqft: 50, max_sqft: 2000, is_active: true, order: 0 }}
             onDone={() => setEditing(null)}
             render={(register, isNew) => (
               <>
@@ -80,58 +79,12 @@ function EventTypes() {
                   {...register('event_type')}
                 />
                 <TextField label="Short description" {...register('description')} />
-                <TextField label="Base price (₹)" type="number" min={0} required {...register('base_price')} />
-                <TextField label="Rate per guest (₹)" type="number" min={0} {...register('per_guest_rate')} />
-                <TextField label="Minimum guests" type="number" min={1} {...register('min_guests')} />
-                <TextField label="Maximum guests" type="number" min={1} {...register('max_guests')} />
+                <TextField label="Rate per sq ft (₹)" type="number" min={0} required {...register('rate_per_sqft')} />
+                <TextField label="Base price (₹)" type="number" min={0} hint="Added to every estimate. Use 0 for none." {...register('base_price')} />
+                <TextField label="Smallest stage (sq ft)" type="number" min={1} {...register('min_sqft')} />
+                <TextField label="Largest stage (sq ft)" type="number" min={1} {...register('max_sqft')} />
                 <TextField label="Display order" type="number" min={0} {...register('order')} />
                 <CheckboxField label="Active (shown in estimator)" className="pt-7" {...register('is_active')} />
-              </>
-            )}
-          />
-        )}
-      </Modal>
-    </section>
-  )
-}
-
-// --- Decor tiers -----------------------------------------------------------
-
-function Tiers() {
-  const list = useCmsList<CmsEstimatorTier>('estimator/tiers')
-  const [editing, setEditing] = useState<CmsEstimatorTier | 'new' | null>(null)
-  return (
-    <section>
-      <TabHeader title="Decor levels" intro="Multipliers applied to the base cost, e.g. Premium ×1.4." onAdd={() => setEditing('new')} addLabel="Add level" />
-      <QueryState isLoading={list.isLoading} error={list.error} />
-      <ul className="grid gap-3 sm:grid-cols-3">
-        {list.data?.map((t) => (
-          <li key={t.id}>
-            <button onClick={() => setEditing(t)} className="w-full rounded-xl border border-stone-200 bg-white p-4 text-left hover:border-brand-300">
-              <span className="flex items-center justify-between">
-                <span className="font-medium">{t.name}</span>
-                <span className="text-sm text-brand-700">×{Number(t.multiplier).toFixed(2)}</span>
-              </span>
-              <span className="mt-1 block text-xs text-stone-500">{t.description}</span>
-              {!t.is_active && <span className="mt-2 inline-block"><Published on={false} labels={['', 'Off']} /></span>}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <Modal open={editing !== null} title={editing === 'new' ? 'Add decor level' : 'Edit decor level'} onClose={() => setEditing(null)}>
-        {editing !== null && (
-          <SimpleForm<CmsEstimatorTier>
-            resource="estimator/tiers"
-            item={editing === 'new' ? null : editing}
-            defaults={{ name: '', description: '', multiplier: '1.00', is_active: true, order: 0 }}
-            onDone={() => setEditing(null)}
-            render={(register) => (
-              <>
-                <TextField label="Name" required {...register('name')} />
-                <TextField label="Multiplier" type="number" step="0.05" min="0.1" required hint="1.00 = base price" {...register('multiplier')} />
-                <TextField label="Description" className="sm:col-span-2" {...register('description')} />
-                <TextField label="Display order" type="number" min={0} {...register('order')} />
-                <CheckboxField label="Active" className="pt-7" {...register('is_active')} />
               </>
             )}
           />

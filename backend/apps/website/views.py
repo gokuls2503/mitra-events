@@ -22,7 +22,6 @@ from .gallery import next_order
 from .models import (
     EstimatorAddon,
     EstimatorEventType,
-    EstimatorTier,
     Faq,
     GalleryCategory,
     GalleryImage,
@@ -97,7 +96,6 @@ class EstimatorOptionsView(PublicMixin, APIView):
                 "event_types": s.EstimatorEventTypeSerializer(
                     EstimatorEventType.objects.filter(is_active=True), many=True
                 ).data,
-                "tiers": s.EstimatorTierSerializer(EstimatorTier.objects.filter(is_active=True), many=True).data,
                 "addons": s.EstimatorAddonSerializer(EstimatorAddon.objects.filter(is_active=True), many=True).data,
             }
         )
@@ -106,7 +104,11 @@ class EstimatorOptionsView(PublicMixin, APIView):
 def _estimate_from(data):
     try:
         return calculate_estimate(
-            event_type=data["event_type"], guests=data["guests"], tier_id=data["tier"], addon_ids=data["addons"]
+            event_type=data["event_type"],
+            width_ft=data["width_ft"],
+            depth_ft=data["depth_ft"],
+            guests=data["guests"],
+            addon_ids=data["addons"],
         )
     except DjangoValidationError as exc:
         raise ValidationError(exc.message_dict)
@@ -152,7 +154,8 @@ class EnquiryView(PublicMixin, APIView):
                 estimate = None  # Never lose a lead over a stale estimate.
             if estimate:
                 data.setdefault("event_type", estimate["event_type"])
-                data.setdefault("guest_count", estimate["guests"])
+                if estimate["guests"]:
+                    data.setdefault("guest_count", estimate["guests"])
 
         create_lead(
             **data,
@@ -249,11 +252,6 @@ class CmsFaqViewSet(CmsMixin, viewsets.ModelViewSet):
 class CmsEstimatorEventTypeViewSet(CmsMixin, viewsets.ModelViewSet):
     queryset = EstimatorEventType.objects.all()
     serializer_class = s.EstimatorEventTypeSerializer
-
-
-class CmsEstimatorTierViewSet(CmsMixin, viewsets.ModelViewSet):
-    queryset = EstimatorTier.objects.all()
-    serializer_class = s.EstimatorTierSerializer
 
 
 class CmsEstimatorAddonViewSet(CmsMixin, viewsets.ModelViewSet):

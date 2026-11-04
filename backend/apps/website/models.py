@@ -231,10 +231,10 @@ class Faq(TimeStampedModel):
 class EstimatorEventType(models.Model):
     event_type = models.CharField(max_length=20, choices=EventType.choices, unique=True)
     description = models.CharField(max_length=160, blank=True)
-    base_price = models.DecimalField(max_digits=10, decimal_places=0)
-    per_guest_rate = models.DecimalField(max_digits=8, decimal_places=0, default=0)
-    min_guests = models.PositiveIntegerField(default=50)
-    max_guests = models.PositiveIntegerField(default=1500)
+    base_price = models.DecimalField(max_digits=10, decimal_places=0, default=0)
+    rate_per_sqft = models.DecimalField(max_digits=8, decimal_places=0, default=25)
+    min_sqft = models.PositiveIntegerField(default=50)
+    max_sqft = models.PositiveIntegerField(default=2000)
     is_active = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=0)
 
@@ -243,22 +243,6 @@ class EstimatorEventType(models.Model):
 
     def __str__(self):
         return self.get_event_type_display()
-
-
-class EstimatorTier(models.Model):
-    """Decor level, e.g. Classic ×1.0, Premium ×1.4, Luxury ×1.9."""
-
-    name = models.CharField(max_length=60)
-    description = models.CharField(max_length=160, blank=True)
-    multiplier = models.DecimalField(max_digits=4, decimal_places=2, validators=[MinValueValidator(0.1)])
-    is_active = models.BooleanField(default=True)
-    order = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["order", "multiplier"]
-
-    def __str__(self):
-        return f"{self.name} ×{self.multiplier}"
 
 
 class EstimatorAddon(models.Model):

@@ -56,7 +56,11 @@ export interface Lead {
   package: number | null
   package_name: string | null
   estimate: {
-    tier: string
+    /** Per sq ft estimates have the stage size; older ones have a decor tier instead. */
+    width_ft?: number
+    depth_ft?: number
+    area_sqft?: number
+    tier?: string
     guests: number
     low: number
     high: number

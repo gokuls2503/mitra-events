@@ -35,6 +35,18 @@ class TestAuthFlow:
         assert "refresh" not in res.data
         assert res.cookies[COOKIE]["httponly"]
 
+    def test_new_passwords_use_argon2(self):
+        assert make_user().password.startswith("argon2")
+
+    def test_old_pbkdf2_password_still_works_and_is_upgraded(self, client):
+        from django.contrib.auth.hashers import make_password
+
+        user = make_user()
+        User.objects.filter(pk=user.pk).update(password=make_password(PASSWORD, hasher="pbkdf2_sha256"))
+        login(client, user)
+        user.refresh_from_db()
+        assert user.password.startswith("argon2")
+
     def test_login_is_case_insensitive_on_email(self, client):
         user = make_user()
         res = client.post("/api/v1/auth/login/", {"email": user.email.upper(), "password": PASSWORD}, format="json")
@@ -151,3 +163,42 @@ class TestUserManagement:
         assert res.status_code == 200
         staff.refresh_from_db()
         assert not staff.is_active
+
+
+@pytest.mark.django_db
+class TestLoginRateLimit:
+    def _attempts(self, client, n, spoof):
+        codes = []
+        for i in range(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"10.0.0.{i}, 203.0.113.7"} if spoof else {}
+            res = client.post("/api/v1/auth/login/", {"email": "x@test.local", "password": "nope"}, format="json", **headers)
+            codes.append(res.status_code)
+        return codes
+
+    def test_spoofed_forwarded_for_does_not_reset_the_limit(self, client, settings):
+        from django.core.cache import cache
+
+        cache.clear()
+        # As in production: nginx appends the real client IP (203.0.113.7) after whatever the visitor sent.
+        settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "NUM_PROXIES": 1}
+        codes = self._attempts(client, 11, spoof=True)
+        assert codes[:10] == [400] * 10 and codes[10] == 429
+        cache.clear()
+
+
+def test_api_docs_not_served_in_production():
+    import importlib
+
+    from django.test import override_settings
+    from django.urls import Resolver404, clear_url_caches, resolve
+
+    import config.urls
+
+    with override_settings(DEBUG=False):
+        clear_url_caches()
+        importlib.reload(config.urls)
+        for path in ("/api/docs/", "/api/schema/"):
+            with pytest.raises(Resolver404):
+                resolve(path)
+    clear_url_caches()
+    importlib.reload(config.urls)

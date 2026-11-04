@@ -22,7 +22,6 @@ cms.register("cms/gallery", views.CmsGalleryViewSet, basename="cms-gallery")
 cms.register("cms/testimonials", views.CmsTestimonialViewSet, basename="cms-testimonial")
 cms.register("cms/faqs", views.CmsFaqViewSet, basename="cms-faq")
 cms.register("cms/estimator/event-types", views.CmsEstimatorEventTypeViewSet, basename="cms-estimator-event-type")
-cms.register("cms/estimator/tiers", views.CmsEstimatorTierViewSet, basename="cms-estimator-tier")
 cms.register("cms/estimator/addons", views.CmsEstimatorAddonViewSet, basename="cms-estimator-addon")
 
 urlpatterns = [

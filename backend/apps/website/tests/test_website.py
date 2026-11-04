@@ -1,6 +1,5 @@
 import datetime
 import io
-from decimal import Decimal
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -15,7 +14,6 @@ from apps.website import models as website_models
 from apps.website.models import (
     EstimatorAddon,
     EstimatorEventType,
-    EstimatorTier,
     Package,
     Service,
 )
@@ -33,13 +31,10 @@ def client():
 
 @pytest.fixture
 def estimator(db):
-    EstimatorEventType.objects.create(
-        event_type=EventType.WEDDING, base_price=90000, per_guest_rate=120, min_guests=100, max_guests=2000
-    )
-    tier = EstimatorTier.objects.create(name="Premium", multiplier=Decimal("1.40"))
+    EstimatorEventType.objects.create(event_type=EventType.WEDDING, base_price=10000, rate_per_sqft=25, min_sqft=50, max_sqft=2000)
     flat = EstimatorAddon.objects.create(name="Arch", pricing="FLAT", price=8000)
     per_guest = EstimatorAddon.objects.create(name="Gifts", pricing="PER_GUEST", price=120)
-    return tier, flat, per_guest
+    return flat, per_guest
 
 
 def login_as(client, role):
@@ -98,38 +93,61 @@ class TestPublicContent:
 @pytest.mark.django_db
 class TestEstimator:
     def test_formula(self, client, estimator):
-        tier, flat, per_guest = estimator
+        flat, per_guest = estimator
         res = client.post(
             "/api/v1/website/estimate/",
-            {"event_type": "WEDDING", "guests": 300, "tier": tier.pk, "addons": [flat.pk, per_guest.pk]},
+            {"event_type": "WEDDING", "width_ft": 20, "depth_ft": 12, "guests": 300, "addons": [flat.pk, per_guest.pk]},
             format="json",
         )
         assert res.status_code == 200, res.data
-        # base 90000 + 120*300 = 126000; ×1.4 = 176400; + 8000 + 36000 = 220400
-        assert res.data["total"] == 220400
-        assert (res.data["low"], res.data["high"]) == (198000, 253000)
-        assert sum(line["amount"] for line in res.data["lines"]) == 220400
+        # base 10000 + 240 sq ft × 25 = 16000; + 8000 + 120×300 = 60000
+        assert res.data["total"] == 60000
+        assert res.data["area_sqft"] == 240
+        assert (res.data["low"], res.data["high"]) == (54000, 69000)
+        assert sum(line["amount"] for line in res.data["lines"]) == 60000
 
-    def test_guest_bounds(self, client, estimator):
-        tier, *_ = estimator
-        res = client.post("/api/v1/website/estimate/", {"event_type": "WEDDING", "guests": 10, "tier": tier.pk}, format="json")
+    def test_no_base_price_line_when_zero(self, client, estimator):
+        EstimatorEventType.objects.filter(event_type="WEDDING").update(base_price=0)
+        res = client.post("/api/v1/website/estimate/", {"event_type": "WEDDING", "width_ft": 10, "depth_ft": 10}, format="json")
+        assert res.status_code == 200, res.data
+        assert res.data["total"] == 2500 and len(res.data["lines"]) == 1
+
+    def test_stage_area_bounds(self, client, estimator):
+        res = client.post("/api/v1/website/estimate/", {"event_type": "WEDDING", "width_ft": 5, "depth_ft": 5}, format="json")
+        assert res.status_code == 400 and "stage" in res.data
+
+    def test_per_guest_addon_needs_guests(self, client, estimator):
+        _, per_guest = estimator
+        res = client.post(
+            "/api/v1/website/estimate/",
+            {"event_type": "WEDDING", "width_ft": 20, "depth_ft": 12, "addons": [per_guest.pk]},
+            format="json",
+        )
         assert res.status_code == 400 and "guests" in res.data
 
     def test_inactive_addon_rejected(self, client, estimator):
-        tier, flat, _ = estimator
+        flat, _ = estimator
         flat.is_active = False
         flat.save()
         res = client.post(
             "/api/v1/website/estimate/",
-            {"event_type": "WEDDING", "guests": 200, "tier": tier.pk, "addons": [flat.pk]},
+            {"event_type": "WEDDING", "width_ft": 20, "depth_ft": 12, "addons": [flat.pk]},
             format="json",
         )
         assert res.status_code == 400
 
     def test_unconfigured_event_type(self, client, estimator):
-        tier, *_ = estimator
-        res = client.post("/api/v1/website/estimate/", {"event_type": "CORPORATE", "guests": 200, "tier": tier.pk}, format="json")
+        res = client.post("/api/v1/website/estimate/", {"event_type": "CORPORATE", "width_ft": 20, "depth_ft": 12}, format="json")
         assert res.status_code == 400 and "event_type" in res.data
+
+    def test_admin_rejects_inverted_area_limits(self, client, estimator):
+        login_as(client, "OWNER")
+        res = client.post(
+            "/api/v1/cms/estimator/event-types/",
+            {"event_type": "BIRTHDAY", "rate_per_sqft": 25, "min_sqft": 500, "max_sqft": 100},
+            format="json",
+        )
+        assert res.status_code == 400 and "max_sqft" in res.data
 
 
 @pytest.mark.django_db
@@ -168,21 +186,22 @@ class TestEnquiry:
         assert Lead.objects.get().package.name == "Signature"
 
     def test_estimate_snapshot_is_computed_server_side(self, client, estimator):
-        tier, flat, _ = estimator
-        data = enquiry(event_type="", estimate_input={"event_type": "WEDDING", "guests": 300, "tier": tier.pk, "addons": [flat.pk]})
+        flat, _ = estimator
+        data = enquiry(
+            event_type="", estimate_input={"event_type": "WEDDING", "width_ft": 20, "depth_ft": 12, "guests": 300, "addons": [flat.pk]}
+        )
         data.pop("event_type")
         res = client.post("/api/v1/website/enquiry/", data, format="json")
         assert res.status_code == 201, res.data
         lead = Lead.objects.get()
         assert lead.source == Lead.Source.ESTIMATOR
-        assert lead.estimate["total"] == 176400 + 8000
+        assert lead.estimate["total"] == 16000 + 8000
         assert (lead.event_type, lead.guest_count) == ("WEDDING", 300)
 
     def test_invalid_estimate_does_not_lose_the_lead(self, client, estimator):
-        tier, *_ = estimator
         res = client.post(
             "/api/v1/website/enquiry/",
-            enquiry(estimate_input={"event_type": "WEDDING", "guests": 1, "tier": tier.pk}),
+            enquiry(estimate_input={"event_type": "WEDDING", "width_ft": 2, "depth_ft": 2}),
             format="json",
         )
         assert res.status_code == 201

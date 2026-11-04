@@ -21,7 +21,6 @@ admin.site.register(
         models.Testimonial,
         models.Faq,
         models.EstimatorEventType,
-        models.EstimatorTier,
         models.EstimatorAddon,
     ]
 )

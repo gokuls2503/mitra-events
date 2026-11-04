@@ -213,7 +213,7 @@ export default function ServiceDetailPage() {
             <h1 className="mt-5 text-4xl leading-tight font-semibold text-brand-800 sm:text-5xl">{service.name}</h1>
             <p className="mt-3 text-lg text-stone-700">{service.short_description}</p>
             <Link to="/contact" className="mt-3 inline-flex items-center gap-1.5 self-start text-brand-600 underline-offset-4 hover:underline">
-              <MapPin className="size-4 text-gold-600" /> Serving {city} &amp; Tirupur
+              <MapPin className="size-4 text-gold-600" /> Service nearby areas like Coimbatore, Sulur, Pollachi, Tirupur and so on..
             </Link>
 
             {service.starting_price && (

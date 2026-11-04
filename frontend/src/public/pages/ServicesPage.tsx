@@ -43,7 +43,7 @@ export default function ServicesPage() {
           <div className="flex-1">
             <h2 className="text-4xl font-semibold text-brand-900 sm:text-5xl">What will your event cost?</h2>
             <p className="mt-3 text-brand-900/80">
-              Pick your event, guest count and decor style — get an instant price range in under a minute.
+              Pick your event and stage size — get an instant price range in under a minute.
             </p>
           </div>
           <Link

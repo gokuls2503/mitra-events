@@ -74,7 +74,7 @@ export function ServicePanel({ service, flip, compact, slideIn }: ServicePanelPr
     <article
       className={clsx(
         'grid overflow-hidden rounded-3xl bg-white ring-1 ring-gold-200 md:grid-cols-2',
-        compact ? 'shadow-xl md:min-h-[18rem]' : 'shadow-2xl md:min-h-[26rem]',
+        compact ? 'shadow-xl md:min-h-[21rem]' : 'shadow-2xl md:min-h-[26rem]',
       )}
     >
       <motion.div
@@ -82,7 +82,8 @@ export function ServicePanel({ service, flip, compact, slideIn }: ServicePanelPr
         whileInView={{ opacity: 1, x: 0 }}
         viewport={view}
         transition={SLIDE}
-        className={clsx('aspect-[4/3] overflow-hidden bg-brand-100 md:aspect-auto', flip && 'md:order-2')}
+        // The photo fills the card instead of setting its height, so every card stays the same size.
+        className={clsx('relative aspect-[4/3] overflow-hidden bg-brand-100 md:aspect-auto', flip && 'md:order-2')}
       >
         {service.cover_image && (
           <img
@@ -90,7 +91,7 @@ export function ServicePanel({ service, flip, compact, slideIn }: ServicePanelPr
             alt={service.name}
             loading="lazy"
             decoding="async"
-            className="size-full object-cover transition duration-700 hover:scale-105"
+            className="absolute inset-0 size-full object-cover transition duration-700 hover:scale-105"
           />
         )}
       </motion.div>

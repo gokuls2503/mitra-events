@@ -6,11 +6,9 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import { AppRoutes } from './routes'
 
-declare global {
-  interface Window {
-    __RQ_STATE__?: DehydratedState
-  }
-}
+// Data the pre-renderer embedded in the page (see scripts/prerender.mjs); absent in the admin and dev.
+const stateTag = document.getElementById('rq-state')
+const prerenderedState: DehydratedState | undefined = stateTag?.textContent ? JSON.parse(stateTag.textContent) : undefined
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,7 +19,7 @@ const queryClient = new QueryClient({
 const app = (
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <HydrationBoundary state={window.__RQ_STATE__}>
+      <HydrationBoundary state={prerenderedState}>
         <BrowserRouter>
           <AppRoutes />
         </BrowserRouter>

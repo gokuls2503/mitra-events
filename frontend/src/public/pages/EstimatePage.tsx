@@ -20,7 +20,7 @@ export default function EstimatePage() {
       <PageHero
         eyebrow="Cost estimator"
         title="Estimate your event"
-        intro="Choose your event, guests and decor style for an instant price range. No sign-up needed."
+        intro="Choose your event and stage size for an instant price range. No sign-up needed."
         image={heroImage(site, 'estimate')}
       />
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">

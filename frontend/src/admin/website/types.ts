@@ -78,18 +78,9 @@ export interface CmsEstimatorEventType {
   label: string
   description: string
   base_price: string
-  per_guest_rate: string
-  min_guests: number
-  max_guests: number
-  is_active: boolean
-  order: number
-}
-
-export interface CmsEstimatorTier {
-  id: number
-  name: string
-  description: string
-  multiplier: string
+  rate_per_sqft: string
+  min_sqft: number
+  max_sqft: number
   is_active: boolean
   order: number
 }

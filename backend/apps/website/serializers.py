@@ -13,7 +13,6 @@ from apps.crm.models import Lead
 from .models import (
     EstimatorAddon,
     EstimatorEventType,
-    EstimatorTier,
     Faq,
     GalleryCategory,
     GalleryImage,
@@ -134,13 +133,14 @@ class EstimatorEventTypeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EstimatorEventType
-        fields = ["id", "event_type", "label", "description", "base_price", "per_guest_rate", "min_guests", "max_guests", "is_active", "order"]
+        fields = ["id", "event_type", "label", "description", "base_price", "rate_per_sqft", "min_sqft", "max_sqft", "is_active", "order"]
 
-
-class EstimatorTierSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = EstimatorTier
-        fields = ["id", "name", "description", "multiplier", "is_active", "order"]
+    def validate(self, attrs):
+        lo = attrs.get("min_sqft", getattr(self.instance, "min_sqft", 0))
+        hi = attrs.get("max_sqft", getattr(self.instance, "max_sqft", 0))
+        if lo > hi:
+            raise serializers.ValidationError({"max_sqft": "Largest stage must be at least the smallest."})
+        return attrs
 
 
 class EstimatorAddonSerializer(serializers.ModelSerializer):
@@ -151,8 +151,9 @@ class EstimatorAddonSerializer(serializers.ModelSerializer):
 
 class EstimateRequestSerializer(serializers.Serializer):
     event_type = serializers.ChoiceField(choices=EventType.choices)
-    guests = serializers.IntegerField(min_value=1, max_value=100000)
-    tier = serializers.IntegerField()
+    width_ft = serializers.IntegerField(min_value=1, max_value=500)
+    depth_ft = serializers.IntegerField(min_value=1, max_value=500)
+    guests = serializers.IntegerField(min_value=0, max_value=100000, required=False, default=0)
     addons = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, max_length=50)
 
 

@@ -18,9 +18,12 @@ urlpatterns = [
     # the business admin lives in the React app under /admin.
     path("django-admin/", admin.site.urls),
     path("api/v1/", include(api_v1)),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="api-docs"),
 ]
 
 if settings.DEBUG:
+    # The API map lists every admin endpoint, so it is only served in local development.
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+        path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="api-docs"),
+    ]
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

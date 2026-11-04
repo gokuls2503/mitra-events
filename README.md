@@ -19,7 +19,7 @@ No Docker: everything runs directly on the machine.
 ```bash
 cd backend
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements-dev.txt
 cp .env.example .env            # then set DJANGO_SECRET_KEY and DATABASE_URL
 createdb mitra_events
 .venv/bin/python manage.py migrate
@@ -71,14 +71,15 @@ search engines see it after the next `npm run build`.
 
 ## Demo logins (after `seed_users`)
 
-| Role | Email | Password |
-|---|---|---|
-| Owner | owner@mitra.local | Mitra@2026 |
-| Manager | manager@mitra.local | Mitra@2026 |
-| Staff | staff@mitra.local | Mitra@2026 |
-| Accountant | accounts@mitra.local | Mitra@2026 |
+| Role | Email |
+|---|---|
+| Owner | owner@mitra.local |
+| Manager | manager@mitra.local |
+| Staff | staff@mitra.local |
+| Accountant | accounts@mitra.local |
 
-`seed_users` refuses to run unless `DJANGO_DEBUG=True`. Never use these in production.
+The password is random and printed once when the users are created; pass `--password` to choose
+your own. `seed_users` refuses to run unless `DJANGO_DEBUG=True`. Never use these in production.
 
 ## Auth design
 

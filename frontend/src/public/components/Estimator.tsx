@@ -24,23 +24,26 @@ const STEP_LABEL = 'text-sm font-semibold tracking-wide text-brand-800 uppercase
 export function Estimator() {
   const { data: options, isLoading } = useQuery(estimatorQuery)
   const [eventType, setEventType] = useState<EventType | null>(null)
+  const [width, setWidth] = useState(20)
+  const [depth, setDepth] = useState(12)
   const [guests, setGuests] = useState(200)
-  const [tierId, setTierId] = useState<number | null>(null)
   const [addonIds, setAddonIds] = useState<number[]>([])
   const [showForm, setShowForm] = useState(false)
 
   const event = options?.event_types.find((e) => e.event_type === eventType)
   const activeType = event?.event_type ?? options?.event_types[0]?.event_type ?? null
-  const activeTier = tierId ?? options?.tiers[0]?.id ?? null
   const activeEvent = options?.event_types.find((e) => e.event_type === activeType)
-  const clampedGuests = activeEvent ? Math.min(Math.max(guests, activeEvent.min_guests), activeEvent.max_guests) : guests
+  const area = width * depth
+  const areaOk = !!activeEvent && area >= activeEvent.min_sqft && area <= activeEvent.max_sqft
+  const needsGuests = !!options?.addons.some((a) => a.pricing === 'PER_GUEST' && addonIds.includes(a.id))
+  const guestsOk = !needsGuests || guests >= 1
 
   const input: EstimateInput | null = useMemo(
     () =>
-      activeType && activeTier
-        ? { event_type: activeType, guests: clampedGuests, tier: activeTier, addons: [...addonIds].sort() }
+      activeType && areaOk && guestsOk
+        ? { event_type: activeType, width_ft: width, depth_ft: depth, guests: needsGuests ? guests : 0, addons: [...addonIds].sort() }
         : null,
-    [activeType, activeTier, clampedGuests, addonIds],
+    [activeType, areaOk, guestsOk, width, depth, needsGuests, guests, addonIds],
   )
   const debouncedInput = useDebounced(input, 250)
 
@@ -59,7 +62,7 @@ export function Estimator() {
       </div>
     )
   }
-  if (!options.event_types.length || !options.tiers.length) {
+  if (!options.event_types.length) {
     return <p className="text-center text-stone-600">The estimator is being set up. Please contact us for a quote.</p>
   }
 
@@ -93,60 +96,44 @@ export function Estimator() {
 
         {activeEvent && (
           <fieldset>
-            <legend className={STEP_LABEL}>2 · How many guests?</legend>
-            <div className="mt-3 flex items-center gap-4">
-              <input
-                type="range"
-                aria-label="Number of guests"
-                min={activeEvent.min_guests}
-                max={activeEvent.max_guests}
-                step={10}
-                value={clampedGuests}
-                onChange={(e) => setGuests(Number(e.target.value))}
-                className="flex-1 accent-brand-700"
-              />
-              <input
-                type="number"
-                aria-label="Number of guests (exact)"
-                min={activeEvent.min_guests}
-                max={activeEvent.max_guests}
-                value={clampedGuests}
-                onChange={(e) => setGuests(Number(e.target.value) || activeEvent.min_guests)}
-                className="w-24 rounded-lg border border-stone-300 px-3 py-2 text-center"
-              />
+            <legend className={STEP_LABEL}>2 · Stage size</legend>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <label className="text-sm text-stone-600">
+                Width (ft)
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={width || ''}
+                  onChange={(e) => setWidth(Math.max(0, Math.floor(Number(e.target.value))) || 0)}
+                  className="mt-1 block w-24 rounded-lg border border-stone-300 px-3 py-2 text-center"
+                />
+              </label>
+              <span className="pb-2 text-stone-400">×</span>
+              <label className="text-sm text-stone-600">
+                Depth (ft)
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={depth || ''}
+                  onChange={(e) => setDepth(Math.max(0, Math.floor(Number(e.target.value))) || 0)}
+                  className="mt-1 block w-24 rounded-lg border border-stone-300 px-3 py-2 text-center"
+                />
+              </label>
+              <span className="pb-2 font-semibold text-brand-800">= {area.toLocaleString('en-IN')} sq ft</span>
             </div>
-            <p className="mt-1 text-xs text-stone-500">
-              {activeEvent.min_guests}–{activeEvent.max_guests.toLocaleString('en-IN')} guests
+            <p className={clsx('mt-1 text-xs', areaOk ? 'text-stone-500' : 'text-red-600')}>
+              {areaOk ? '' : 'Stage area must be '}
+              {activeEvent.min_sqft.toLocaleString('en-IN')}–{activeEvent.max_sqft.toLocaleString('en-IN')} sq ft
+              {areaOk ? ' for this event' : '.'}
             </p>
           </fieldset>
         )}
 
-        <fieldset>
-          <legend className={STEP_LABEL}>3 · Decor style</legend>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {options.tiers.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                aria-pressed={activeTier === t.id}
-                onClick={() => setTierId(t.id)}
-                className={clsx(
-                  'rounded-xl p-4 text-left transition',
-                  activeTier === t.id ? 'bg-brand-700 text-white shadow-lg' : 'bg-white ring-1 ring-brand-100 hover:ring-brand-300',
-                )}
-              >
-                <span className="font-display text-2xl font-semibold">{t.name}</span>
-                <span className={clsx('mt-1 block text-xs', activeTier === t.id ? 'text-brand-100' : 'text-stone-500')}>
-                  {t.description}
-                </span>
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
         {options.addons.length > 0 && (
           <fieldset>
-            <legend className={STEP_LABEL}>4 · Add-ons (optional)</legend>
+            <legend className={STEP_LABEL}>3 · Add-ons (optional)</legend>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {options.addons.map((a) => {
                 const on = addonIds.includes(a.id)
@@ -179,6 +166,19 @@ export function Estimator() {
                 )
               })}
             </div>
+            {needsGuests && (
+              <label className="mt-4 flex items-center gap-3 text-sm text-stone-600">
+                Number of guests
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={guests || ''}
+                  onChange={(e) => setGuests(Math.max(0, Math.floor(Number(e.target.value))) || 0)}
+                  className="w-24 rounded-lg border border-stone-300 px-3 py-2 text-center"
+                />
+              </label>
+            )}
           </fieldset>
         )}
       </div>
@@ -189,24 +189,27 @@ export function Estimator() {
             <Sparkles className="size-4" /> Your estimate
           </p>
           <div className="mt-3 min-h-[3.5rem]" aria-live="polite">
-            {estimate.data ? (
+            {!input ? (
+              <p className="text-sm text-stone-500">{guestsOk ? 'Enter a stage size within the range to see your estimate.' : 'Enter the number of guests.'}</p>
+            ) : estimate.data ? (
               <AnimatePresence mode="wait">
                 <motion.p
-                  key={`${estimate.data.low}-${estimate.data.high}`}
+                  key={estimate.data.low}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.25 }}
                   className="font-display text-4xl font-semibold text-brand-800"
                 >
-                  {formatINR(estimate.data.low)} – {formatINR(estimate.data.high)}
+                  <span className="block font-sans text-sm font-medium text-stone-500">Starting from</span>
+                  {formatINR(estimate.data.low)}
                 </motion.p>
               </AnimatePresence>
             ) : (
               <Spinner className="size-6 text-brand-700" />
             )}
           </div>
-          {estimate.data && (
+          {input && estimate.data && (
             <>
               <ul className="mt-4 space-y-1.5 border-t border-gold-200 pt-4 text-sm text-stone-600">
                 {estimate.data.lines.map((l) => (
