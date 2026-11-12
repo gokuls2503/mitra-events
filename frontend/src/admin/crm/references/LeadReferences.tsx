@@ -8,6 +8,7 @@ import { Drawer } from '@/shared/ui/Drawer'
 import { useLeadImages, useLeadItems, type LeadImage } from './api'
 import { ImagesTab } from './ImagesTab'
 import { ItemsTab } from './ItemsTab'
+import { MediaThumb, mediaCount } from './MediaThumb'
 
 type Tab = 'design' | 'stage' | 'items'
 
@@ -109,18 +110,18 @@ function SummaryCard({ title, count, onOpen, children }: { title: string; count?
 
 function ImagesCard({ title, images, loading, error, onOpen }: { title: string; images: LeadImage[]; loading: boolean; error: boolean; onOpen: () => void }) {
   return (
-    <SummaryCard title={title} count={loading || error ? undefined : `${images.length} image${images.length === 1 ? '' : 's'}`} onOpen={onOpen}>
+    <SummaryCard title={title} count={loading || error ? undefined : mediaCount(images)} onOpen={onOpen}>
       {loading && <Skeleton />}
       {error && <span className="text-sm text-red-700">Couldn't load images.</span>}
       {!loading && !error && images.length === 0 && (
         <span className="flex items-center gap-2 text-sm text-stone-500">
-          <ImageIcon className="size-4" /> No images yet
+          <ImageIcon className="size-4" /> No photos or videos yet
         </span>
       )}
       {images.length > 0 && (
         <span className="grid grid-cols-3 gap-2">
           {images.slice(0, 3).map((img) => (
-            <img key={img.id} src={img.thumbnail ?? img.image} alt="" loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
+            <MediaThumb key={img.id} item={img} className="aspect-square w-full rounded-lg" />
           ))}
         </span>
       )}

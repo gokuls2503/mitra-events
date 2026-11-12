@@ -4,6 +4,14 @@ import type { SiteSettings } from './api'
 
 export const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
+/** Share preview photo for pages that have none of their own, and until a home banner is uploaded. */
+export const DEFAULT_SHARE_IMAGE = '/images/hero-stage.jpg'
+
+/** Towns the business serves, for Google's business details. */
+export function serviceAreas(site: SiteSettings | undefined) {
+  return [...new Set([site?.city || 'Coimbatore', 'Sulur', 'Pollachi', 'Tirupur'])]
+}
+
 export interface HeadData {
   title: string
   description: string
@@ -27,7 +35,7 @@ const escapeHtml = (s: string) =>
 /** Used by the pre-render script to produce the static <head> for a page. */
 export function renderHeadTags(head: HeadData, site: SiteSettings | undefined): string {
   const url = `${SITE_URL}${head.path}`
-  const image = absolute(head.image ?? site?.hero_image)
+  const image = absolute(head.image || site?.hero_image || DEFAULT_SHARE_IMAGE)
   const jsonLd = [...(site ? [localBusinessJsonLd(site)] : []), ...(head.jsonLd ?? [])]
   return [
     `<title>${escapeHtml(head.title)}</title>`,
@@ -57,7 +65,7 @@ export function localBusinessJsonLd(site: SiteSettings) {
     url: `${SITE_URL}/`,
     telephone: site.phone || undefined,
     email: site.email || undefined,
-    image: absolute(site.hero_image),
+    image: absolute(site.hero_image || DEFAULT_SHARE_IMAGE),
     address: {
       '@type': 'PostalAddress',
       streetAddress: site.address ? site.address.split('\n').map((l) => l.trim().replace(/,$/, '')).filter(Boolean).join(', ') : undefined,
@@ -66,7 +74,7 @@ export function localBusinessJsonLd(site: SiteSettings) {
       addressRegion: 'Tamil Nadu',
       addressCountry: 'IN',
     },
-    areaServed: site.city,
+    areaServed: serviceAreas(site),
     sameAs: [site.instagram_url, site.facebook_url, site.youtube_url].filter(Boolean),
   }
 }

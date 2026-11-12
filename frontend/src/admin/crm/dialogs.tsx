@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/shared/auth/useAuth'
+import { fmtDate } from '@/shared/dates'
+import { prettyPhone } from '@/shared/format'
 import { Button } from '@/shared/ui/Button'
 import { DateField } from '@/shared/ui/DateField'
 import { SelectField, TextAreaField, TextField } from '@/shared/ui/Field'
@@ -10,7 +12,7 @@ import { Modal } from '@/shared/ui/Modal'
 import { MultiSelectField } from '@/shared/ui/MultiSelectField'
 
 import { FormError } from '../kit'
-import { crm, useCrmMutation, useTeam, type Lead, type LeadStatus } from './api'
+import { crm, useCrmMutation, useTeam, type Lead, type LeadStatus, type PhoneMatches } from './api'
 import { EVENT_TYPES, LEAD_SOURCES, LEAD_STATUSES } from './labels'
 import { MobileNumbers } from './MobileNumbers'
 
@@ -65,6 +67,10 @@ interface NewLeadValues {
   source: string
   event_types: Lead['event_types']
   event_date: string
+  status: LeadStatus
+  lost_reason: string
+  setup_date: string
+  setup_time: string
   venue: string
   guest_count: string
   budget: string
@@ -86,9 +92,27 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
   const { data: team } = useTeam()
   const mutation = useCrmMutation(crm.createLead)
   const [mobiles, setMobiles] = useState([''])
-  const { register, handleSubmit, control } = useForm<NewLeadValues>({
-    defaultValues: { source: 'PHONE', event_types: [], assigned_to: hasRole('STAFF') ? String(user?.id) : '' },
+  const [existing, setExisting] = useState<{ phone: string; found: PhoneMatches } | null>(null)
+  const checked = useRef(new Set<string>())
+  const { register, handleSubmit, control, watch } = useForm<NewLeadValues>({
+    defaultValues: { source: 'PHONE', status: 'NEW', event_types: [], assigned_to: hasRole('STAFF') ? String(user?.id) : '' },
   })
+  const status = watch('status')
+  const won = status === 'WON'
+  // Won confirms the booking at once, which only the owner or a manager may do.
+  const statuses = hasRole('OWNER', 'MANAGER') ? LEAD_STATUSES : LEAD_STATUSES.filter((s) => s.value !== 'WON')
+
+  // Each complete number is looked up once; a known client or lead opens a warning popup.
+  useEffect(() => {
+    for (const digits of mobiles) {
+      if (!/^[6-9]\d{9}$/.test(digits) || checked.current.has(digits)) continue
+      checked.current.add(digits)
+      crm
+        .phoneMatches(`+91${digits}`)
+        .then((found) => (found.clients.length || found.leads.length) && setExisting({ phone: `+91${digits}`, found }))
+        .catch(() => undefined) // a failed lookup never blocks entering the lead
+    }
+  }, [mobiles])
 
   const submit = (v: NewLeadValues) =>
     mutation.mutate(
@@ -99,6 +123,9 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
         extra_phones: mobiles.slice(1).filter(Boolean).map((d) => `+91${d}`),
         source: v.source as Lead['source'],
         event_date: v.event_date || null,
+        lost_reason: v.status === 'LOST' ? v.lost_reason : '',
+        setup_date: v.setup_date || null,
+        setup_time: v.setup_time || null,
         guest_count: v.guest_count ? Number(v.guest_count) : null,
         budget: v.budget || null,
         assigned_to: v.assigned_to ? Number(v.assigned_to) : null,
@@ -108,21 +135,37 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
 
   return (
     <form onSubmit={handleSubmit(submit)} className="grid gap-4 sm:grid-cols-2">
+      <ExistingNumberDialog existing={existing} onClose={() => setExisting(null)} />
       <TextField label="Name *" required autoFocus {...register('name')} />
       <MobileNumbers values={mobiles} onChange={setMobiles} />
       <TextField label="Email" type="email" {...register('email')} />
       <SelectField label="How did they reach us?" options={LEAD_SOURCES} {...register('source')} />
+      <SelectField label="Lead status" options={statuses} {...register('status')} />
+      {status === 'LOST' && <TextField label="Why was it lost? *" required {...register('lost_reason')} />}
+      {won && <p className="self-end text-sm text-stone-500 sm:pb-2">Saving confirms the booking, so event type, event date and venue are needed.</p>}
       <Controller
         control={control}
         name="event_types"
-        render={({ field }) => <MultiSelectField label="Event type" options={EVENT_TYPES} value={field.value} onChange={field.onChange} />}
+        render={({ field }) => (
+          <MultiSelectField label={won ? 'Event type *' : 'Event type'} options={EVENT_TYPES} value={field.value} onChange={field.onChange} />
+        )}
       />
       <Controller
         control={control}
         name="event_date"
-        render={({ field }) => <DateField label="Event date" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />}
+        render={({ field }) => (
+          <DateField label={won ? 'Event date *' : 'Event date'} required={won} value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+        )}
       />
-      <TextField label="Venue / area" {...register('venue')} />
+      <Controller
+        control={control}
+        name="setup_date"
+        render={({ field }) => (
+          <DateField label="Decor team date" hint="Leave blank if it's the event date" value={field.value} onChange={field.onChange} onBlur={field.onBlur} />
+        )}
+      />
+      <TextField label="Decor team time" hint="When the decor team must arrive" type="time" {...register('setup_time')} />
+      <TextField label={won ? 'Venue / area *' : 'Venue / area'} required={won} {...register('venue')} />
       <div className="grid grid-cols-2 gap-3">
         <TextField label="Guests" type="number" min={1} {...register('guest_count')} />
         <TextField label="Budget (₹)" type="number" min={0} {...register('budget')} />
@@ -142,11 +185,63 @@ function NewLeadForm({ onClose }: { onClose: () => void }) {
             Cancel
           </Button>
           <Button type="submit" loading={mutation.isPending}>
-            Create lead
+            {won ? 'Create lead and confirm booking' : 'Create lead'}
           </Button>
         </div>
       </div>
     </form>
+  )
+}
+
+/** Warns that a number typed in the new lead form already belongs to a client or an earlier lead. */
+function ExistingNumberDialog({ existing, onClose }: { existing: { phone: string; found: PhoneMatches } | null; onClose: () => void }) {
+  const { clients, leads } = existing?.found ?? { clients: [], leads: [] }
+  return (
+    <Modal open={existing !== null} title="This number already exists" onClose={onClose}>
+      <div className="space-y-4 text-sm">
+        <p className="text-stone-700">
+          <span className="font-medium tabular-nums">{existing && prettyPhone(existing.phone)}</span> is already saved for:
+        </p>
+        {clients.length > 0 && (
+          <div>
+            <p className="mb-1 text-xs font-semibold tracking-wide text-stone-500 uppercase">Clients</p>
+            <ul className="space-y-1">
+              {clients.map((c) => (
+                <li key={c.id}>
+                  <Link to={`/admin/crm/clients/${c.id}`} target="_blank" className="font-medium text-brand-800 hover:underline">
+                    {c.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {leads.length > 0 && (
+          <div>
+            <p className="mb-1 text-xs font-semibold tracking-wide text-stone-500 uppercase">Leads</p>
+            <ul className="space-y-1">
+              {leads.map((l) => (
+                <li key={l.id}>
+                  <Link to={`/admin/crm/leads/${l.id}`} target="_blank" className="font-medium text-brand-800 hover:underline">
+                    {l.name}
+                  </Link>
+                  <span className="text-stone-500">
+                    {' · '}
+                    {[l.venue, l.status_label, l.event_date && fmtDate(l.event_date)].filter(Boolean).join(' · ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="text-stone-500">Check it isn't the same enquiry before creating a new lead. The links open in a new tab.</p>
+        <div className="flex justify-end">
+          <Button type="button" onClick={onClose}>
+            OK, continue
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -194,7 +289,7 @@ function ConvertForm({ lead, onClose }: { lead: Lead; onClose: () => void }) {
       event_date: lead.event_date ?? '',
       end_date: lead.end_date ?? '',
       start_time: lead.start_time?.slice(0, 5) ?? '',
-      setup_date: '',
+      setup_date: lead.setup_date ?? '',
       setup_time: lead.setup_time?.slice(0, 5) ?? '',
       venue: lead.venue,
       venue_address: lead.venue_address,

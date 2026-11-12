@@ -60,7 +60,7 @@ import { LotusMark } from '../components/Brand'
 import { EnquiryForm } from '../components/LazyEnquiryForm'
 import { SERVICE_HERO_PHOTO } from '../components/PageHero'
 import { Reveal } from '../components/Reveal'
-import { SITE_URL, pageTitle } from '../head'
+import { SITE_URL, pageTitle, serviceAreas } from '../head'
 import { Seo } from '../Seo'
 import NotFoundPage from './NotFoundPage'
 
@@ -114,18 +114,24 @@ const PAYMENT_ICONS: [RegExp, LucideIcon][] = [
   [/valid|days/i, Clock],
 ]
 
+/** Google title when the admin hasn't set one, e.g. "Wedding Decoration in Coimbatore". */
+function serviceTitle(name: string, city: string) {
+  const what = /decor|stage|event/i.test(name) ? name : `${name} Decoration`
+  return `${what} in ${city}`
+}
+
 export default function ServiceDetailPage() {
   const { slug = '' } = useParams()
   const { data: site } = useQuery(settingsQuery)
   const { data: service, isError, isLoading } = useQuery(serviceQuery(slug))
   const { data: gallery } = useQuery(galleryQuery)
-  const title = pageTitle(service?.seo_title || service?.name || null, site)
+  const title = pageTitle(service?.seo_title || (service ? serviceTitle(service.name, site?.city ?? 'Coimbatore') : null), site)
 
-  if (isError) return <NotFoundPage />
+  // A failed refresh keeps the prerendered page (Google's renderer can't reach /api); only a missing service is a 404.
+  if (isError && !service) return <NotFoundPage />
   if (isLoading || !service) return <div className="min-h-[60vh]" />
 
   const related = gallery?.filter((g) => g.category === service.category).slice(0, 12) ?? []
-  const city = site?.city ?? 'Coimbatore'
 
   return (
     <>
@@ -141,7 +147,7 @@ export default function ServiceDetailPage() {
             name: service.name,
             description: service.short_description,
             serviceType: service.category_label,
-            areaServed: city,
+            areaServed: serviceAreas(site),
             provider: { '@id': `${SITE_URL}/#business` },
             ...(service.starting_price && {
               offers: {

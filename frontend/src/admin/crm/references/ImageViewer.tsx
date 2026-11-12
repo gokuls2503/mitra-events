@@ -15,7 +15,7 @@ interface Props {
   onChange: (index: number | null) => void
 }
 
-/** Full-screen image with caption editing, delete, and move between Design and Stage. */
+/** Full-screen photo or video with caption editing, delete, and move between Design and Stage. */
 export function ImageViewer({ leadId, images, index, canWrite, onChange }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   const img = index !== null ? images[index] : undefined
@@ -58,7 +58,21 @@ export function ImageViewer({ leadId, images, index, canWrite, onChange }: Props
             </button>
           </div>
           <div className="relative flex min-h-0 flex-1 items-center justify-center px-2">
-            <img src={img.image} alt={img.caption || 'Reference image'} className="max-h-full max-w-full object-contain" />
+            {img.video ? (
+              // Keyed so moving to the next item stops this video.
+              <video
+                key={img.id}
+                src={img.video}
+                poster={img.image ?? undefined}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={img.caption || 'Reference video'}
+                className="max-h-full max-w-full"
+              />
+            ) : (
+              <img src={img.image ?? undefined} alt={img.caption || 'Reference image'} className="max-h-full max-w-full object-contain" />
+            )}
             {images.length > 1 && (
               <>
                 <button
@@ -138,7 +152,7 @@ function ViewerControls({ leadId, image, canWrite, onRemoved }: { leadId: number
         {confirming ? (
           <span className="ml-auto flex items-center gap-2">
             <Button variant="danger" className="h-11" loading={remove.isPending} onClick={() => remove.mutate(image.id, { onSuccess: onRemoved })}>
-              Delete image
+              Delete {image.video ? 'video' : 'image'}
             </Button>
             <button onClick={() => setConfirming(false)} className="h-11 rounded-lg px-3 text-sm hover:bg-white/10">
               Keep

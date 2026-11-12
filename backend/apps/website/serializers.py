@@ -1,4 +1,5 @@
 import os
+import re
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models as dj_models
@@ -99,6 +100,14 @@ class PublicPackageSerializer(serializers.ModelSerializer):
         ]
 
 
+# Names phones and cameras give photos, e.g. "IMG_2041", "WhatsApp Image 2026-11-05 at 12.55.54", "20230708_104512".
+CAMERA_FILE_NAME = re.compile(r"^(img|dsc|dcim|pxl|vid|mvimg|whatsapp image|screenshot|photo|image)(?=[\W_\d]|$)|^[\d\W_]+$", re.IGNORECASE)
+
+
+def is_camera_file_name(text: str) -> bool:
+    return bool(CAMERA_FILE_NAME.match(text.strip()))
+
+
 class PublicGallerySerializer(ImageFieldsMixin, serializers.ModelSerializer):
     category_label = serializers.CharField(source="get_category_display", read_only=True)
     gallery_category_name = serializers.CharField(source="gallery_category.name", read_only=True, default=None)
@@ -106,6 +115,16 @@ class PublicGallerySerializer(ImageFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = GalleryImage
         fields = ["id", "image", "category", "category_label", "gallery_category", "gallery_category_name", "caption", "alt_text", "is_featured"]
+
+    def to_representation(self, instance):
+        # Photos are named after their file on upload; visitors and Google get a real description instead.
+        data = super().to_representation(instance)
+        if is_camera_file_name(data["caption"]):
+            data["caption"] = ""
+        if not data["alt_text"] or is_camera_file_name(data["alt_text"]):
+            kind = data["gallery_category_name"] or data["category_label"] or "Event"
+            data["alt_text"] = f"{kind} decoration by Mitra Events"
+        return data
 
 
 class PublicGalleryCategorySerializer(serializers.ModelSerializer):
@@ -204,6 +223,16 @@ class EnquirySerializer(serializers.ModelSerializer):
 # --- Admin (CMS) ----------------------------------------------------------
 
 
+BANNER_FIELDS = {
+    "hero_image",
+    "about_hero_image",
+    "services_hero_image",
+    "gallery_hero_image",
+    "contact_hero_image",
+    "estimate_hero_image",
+}
+
+
 class CmsSettingsSerializer(ImageFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = SiteSettings
@@ -221,6 +250,16 @@ class CmsSettingsSerializer(ImageFieldsMixin, serializers.ModelSerializer):
                 "estimate_hero_image",
             ]
         }
+
+    def validate_banner_positions(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Expected banner name → [x, y].")
+        for field, point in value.items():
+            if field not in BANNER_FIELDS:
+                raise serializers.ValidationError(f"Unknown banner “{field}”.")
+            if not (isinstance(point, list) and len(point) == 2 and all(isinstance(n, (int, float)) and 0 <= n <= 100 for n in point)):
+                raise serializers.ValidationError("Each position is [x, y], two numbers from 0 to 100.")
+        return {field: [round(point[0], 1), round(point[1], 1)] for field, point in value.items()}
 
 
 class CmsServiceSerializer(ImageFieldsMixin, serializers.ModelSerializer):

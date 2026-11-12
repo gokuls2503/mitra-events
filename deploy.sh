@@ -153,7 +153,7 @@ add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
-add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src https://www.google.com https://maps.google.com; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-src https://www.google.com https://maps.google.com; object-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" always;
 NGINX
 
 cat > /etc/nginx/snippets/mitra-django-proxy.conf <<'NGINX'
@@ -178,6 +178,9 @@ server {
     listen [::]:80;
     server_name ${DOMAIN} ${WWW};
 
+    # One address for Google: www.mitraevents.in goes to mitraevents.in.
+    if (\$host = ${WWW}) { return 301 https://${DOMAIN}\$request_uri; }
+
     root ${FRONTEND}/dist;
     client_max_body_size 25M;
     server_tokens off;   # don't advertise the nginx version
@@ -193,6 +196,13 @@ server {
     # Login forms: 10 a minute per IP (a short burst of 5 is allowed for typos).
     location = /api/v1/auth/login/  { limit_req zone=mitra_login burst=5 nodelay; include /etc/nginx/snippets/mitra-django-proxy.conf; }
     location = /django-admin/login/  { limit_req zone=mitra_login burst=5 nodelay; include /etc/nginx/snippets/mitra-django-proxy.conf; }
+
+    # Lead design/stage uploads may be phone videos (up to 100 MB); everything else keeps the 25 MB limit.
+    location ~ ^/api/v1/crm/leads/[0-9]+/images/$ {
+        client_max_body_size 110M;
+        limit_req zone=mitra_api burst=60 nodelay;
+        include /etc/nginx/snippets/mitra-django-proxy.conf;
+    }
 
     # Django: API and emergency admin
     location ~ ^/(api|django-admin)/ {

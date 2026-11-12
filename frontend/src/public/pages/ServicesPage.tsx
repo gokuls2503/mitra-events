@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { servicesQuery, settingsQuery } from '../api'
 import { ServicePanel } from '../components/Cards'
-import { heroImage, PageHero } from '../components/PageHero'
+import { heroImage, heroPosition, PageHero } from '../components/PageHero'
 import { Reveal } from '../components/Reveal'
 import { pageTitle } from '../head'
 import { Seo } from '../Seo'
@@ -25,7 +25,7 @@ export default function ServicesPage() {
         eyebrow="Services"
         title="Decor for every occasion"
         intro="Choose a service to see what's included, or contact us for something completely custom."
-        image={heroImage(site, 'services')}
+        image={heroImage(site, 'services')} position={heroPosition(site, 'services')}
       />
       {/* Photo and text side by side, swapping sides on every other service; each half slides in from its side. */}
       <section className="mx-auto max-w-5xl overflow-x-clip px-4 py-20 sm:px-6">

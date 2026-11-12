@@ -85,6 +85,7 @@ class Lead(EventTypesMixin, AuditedModel):
     end_date = models.DateField(null=True, blank=True, help_text="For multi-day events")
     start_time = models.TimeField(null=True, blank=True)
     setup_time = models.TimeField(null=True, blank=True, help_text="When the decor team must arrive")
+    setup_date = models.DateField(null=True, blank=True, help_text="Day the decor team starts; blank means the event date")
     venue = models.CharField(max_length=200, blank=True)
     venue_address = models.TextField(blank=True)
     coordinator = models.ForeignKey(
@@ -241,7 +242,9 @@ class LeadImage(models.Model):
 
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="images")
     section = models.CharField(max_length=10, choices=Section.choices, db_index=True)
-    image = models.ImageField(upload_to="leads/%Y/%m/")
+    # For a video this is its cover frame, and may be empty if the phone couldn't make one.
+    image = models.ImageField(upload_to="leads/%Y/%m/", blank=True)
+    video = models.FileField(upload_to="leads/%Y/%m/videos/", blank=True)
     thumbnail = models.ImageField(upload_to="leads/%Y/%m/thumbs/", blank=True)
     caption = models.CharField(max_length=200, blank=True)
     source = models.CharField(max_length=10, choices=Source.choices, default=Source.OURS, help_text="Design images only")

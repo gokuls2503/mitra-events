@@ -1,8 +1,9 @@
-"""Lead references: who may see them, and how uploaded images are checked and stored.
+"""Lead references: who may see them, and how uploaded images and videos are checked and stored.
 
 The browser already shrinks photos (1600px, JPEG ~80%); the server re-checks everything
 and normalises the file anyway, so a direct API upload can't store a 40 MB PNG or a
-file that only pretends to be an image.
+file that only pretends to be an image. Videos can't be shrunk in the browser, so they are
+stored as sent, after a size limit and a check that the file really is an MP4/MOV/WebM video.
 """
 
 import io
@@ -23,6 +24,8 @@ MAX_SIDE = 1600
 THUMB_SIDE = 480
 MAX_IMAGES_PER_SECTION = 60
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
+MAX_VIDEO_MB = 100
+MAX_VIDEOS_PER_SECTION = 15
 
 Image.MAX_IMAGE_PIXELS = 50_000_000  # refuse decompression bombs
 
@@ -78,10 +81,33 @@ def process_upload(upload) -> tuple[ContentFile, ContentFile]:
     )
 
 
-def add_image(*, lead: Lead, upload, section: str, source: str, caption: str, user) -> LeadImage:
+def check_video(upload) -> ContentFile:
+    """Checks an uploaded video by its size and the signature at the start of the file."""
+    if upload.size > MAX_VIDEO_MB * 1024 * 1024:
+        raise ValidationError({"video": f"Each video must be under {MAX_VIDEO_MB} MB."})
+    head = upload.read(12)
+    upload.seek(0)
+    if head[4:8] == b"ftyp":
+        ext = "mov" if head[8:10] == b"qt" else "mp4"
+    elif head[:4] == b"\x1aE\xdf\xa3":
+        ext = "webm"
+    else:
+        raise ValidationError({"video": "Upload an MP4, MOV or WebM video."})
+    upload.name = f"{uuid.uuid4().hex[:16]}.{ext}"
+    return upload
+
+
+def add_image(*, lead: Lead, upload=None, video=None, section: str, source: str, caption: str, user) -> LeadImage:
+    """Adds a photo, or a video with an optional cover frame (`upload`)."""
+    if video is not None:
+        if lead.images.filter(section=section).exclude(video="").count() >= MAX_VIDEOS_PER_SECTION:
+            raise ValidationError({"video": f"This section already has {MAX_VIDEOS_PER_SECTION} videos. Remove some first."})
+        video = check_video(video)
+    elif upload is None:
+        raise ValidationError({"image": "Choose a photo or a video."})
     if lead.images.filter(section=section).count() >= MAX_IMAGES_PER_SECTION:
         raise ValidationError({"image": f"This section already has {MAX_IMAGES_PER_SECTION} images. Remove some first."})
-    image, thumb = process_upload(upload)
+    image, thumb = process_upload(upload) if upload is not None else (None, None)
     obj = LeadImage(
         lead=lead,
         section=section,
@@ -89,7 +115,10 @@ def add_image(*, lead: Lead, upload, section: str, source: str, caption: str, us
         caption=caption.strip(),
         uploaded_by=user,
     )
-    obj.image.save(image.name, image, save=False)
-    obj.thumbnail.save(thumb.name, thumb, save=False)
+    if image is not None:
+        obj.image.save(image.name, image, save=False)
+        obj.thumbnail.save(thumb.name, thumb, save=False)
+    if video is not None:
+        obj.video.save(video.name, video, save=False)
     obj.save()
     return obj

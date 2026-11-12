@@ -505,3 +505,88 @@ class TestEventCard:
         Quotation.objects.create(number="QT/3", client=b.client, booking=b, date=timezone.localdate(), status="ACCEPTED", total="61000.00")
         q = c.get(f"/api/v1/crm/bookings/{b.pk}/").data["approved_quotation"]
         assert (q["number"], q["total"]) == ("QT/3", "61000.00")
+
+
+@pytest.mark.django_db
+class TestPhoneMatches:
+    URL = "/api/v1/crm/leads/phone-matches/"
+
+    def test_finds_clients_and_leads_on_any_of_their_numbers(self, team):
+        Client.objects.create(name="Kavya R", phone="+919876543210")
+        Client.objects.create(name="Arun", phone="+919000000001", alt_phone="+919876543210")
+        lead(name="Meena", phone="+919111111111", extra_phones=["+919876543210"], venue="Sree Mahal")
+        res = api(team["manager"]).get(self.URL, {"phone": "98765 43210"})
+        assert res.status_code == 200
+        assert [c["name"] for c in res.data["clients"]] == ["Arun", "Kavya R"]
+        assert [(x["name"], x["venue"]) for x in res.data["leads"]] == [("Meena", "Sree Mahal")]
+
+    def test_unknown_number_has_no_matches(self, team):
+        lead()
+        assert api(team["manager"]).get(self.URL, {"phone": "9123456789"}).data == {"clients": [], "leads": []}
+
+    def test_staff_only_see_their_own_leads(self, team):
+        lead(name="Theirs", assigned_to=team["staff2"])
+        assert api(team["staff"]).get(self.URL, {"phone": "9876543210"}).data["leads"] == []
+
+    def test_bad_number_rejected(self, team):
+        assert api(team["manager"]).get(self.URL, {"phone": "123"}).status_code == 400
+        assert api().get(self.URL, {"phone": "9876543210"}).status_code == 401
+
+
+@pytest.mark.django_db
+class TestNewLeadStage:
+    URL = "/api/v1/crm/leads/"
+
+    def payload(self, **kw):
+        data = {"name": "Kavya", "phone": "9876543210", "event_types": ["WEDDING"], "venue": "Sree Mahal", "event_date": NEXT_MONTH.isoformat()}
+        data.update(kw)
+        return data
+
+    def test_defaults_to_new(self, team):
+        res = api(team["manager"]).post(self.URL, self.payload(), format="json")
+        assert res.status_code == 201
+        assert res.data["status"] == "NEW"
+
+    def test_open_stage_is_kept_and_logged(self, team):
+        res = api(team["staff"]).post(self.URL, self.payload(status="MEETING"), format="json")
+        assert res.status_code == 201
+        lead_ = Lead.objects.get(pk=res.data["id"])
+        assert lead_.status == "MEETING"
+        assert lead_.activities.filter(kind=LeadActivity.Kind.STATUS).exists()
+
+    def test_lost_needs_a_reason(self, team):
+        res = api(team["manager"]).post(self.URL, self.payload(status="LOST"), format="json")
+        assert res.status_code == 400 and "lost_reason" in res.data
+        res = api(team["manager"]).post(self.URL, self.payload(status="LOST", lost_reason="Went elsewhere"), format="json")
+        assert res.data["status"] == "LOST" and res.data["lost_reason"] == "Went elsewhere"
+
+    def test_won_confirms_the_booking_with_decor_team_date_and_time(self, team):
+        setup = NEXT_MONTH - datetime.timedelta(days=1)
+        res = api(team["manager"]).post(self.URL, self.payload(status="WON", setup_date=setup.isoformat(), setup_time="15:30"), format="json")
+        assert res.status_code == 201
+        assert res.data["status"] == "WON" and res.data["booking"]
+        booking = Booking.objects.get(pk=res.data["booking"]["id"])
+        assert (booking.setup_date, booking.setup_time.isoformat(timespec="minutes"), booking.venue) == (setup, "15:30", "Sree Mahal")
+        assert booking.client.phone == "+919876543210"
+
+    def test_won_needs_the_booking_details(self, team):
+        res = api(team["manager"]).post(self.URL, self.payload(status="WON", event_date=None, venue=""), format="json")
+        assert res.status_code == 400 and {"event_date", "venue"} <= set(res.data)
+        assert not Lead.objects.exists()
+
+    def test_decor_team_cant_start_after_the_event(self, team):
+        late = NEXT_MONTH + datetime.timedelta(days=2)
+        res = api(team["manager"]).post(self.URL, self.payload(status="WON", setup_date=late.isoformat()), format="json")
+        assert res.status_code == 400 and "setup_date" in res.data
+        assert not Lead.objects.exists()
+
+    def test_decor_team_date_and_time_are_kept_at_any_stage(self, team):
+        setup = NEXT_MONTH - datetime.timedelta(days=1)
+        res = api(team["manager"]).post(self.URL, self.payload(status="CONTACTED", setup_date=setup.isoformat(), setup_time="09:00"), format="json")
+        assert res.status_code == 201
+        assert (res.data["setup_date"], res.data["setup_time"]) == (setup.isoformat(), "09:00:00")
+
+    def test_staff_cant_mark_won(self, team):
+        res = api(team["staff"]).post(self.URL, self.payload(status="WON"), format="json")
+        assert res.status_code == 403
+        assert not Lead.objects.exists()

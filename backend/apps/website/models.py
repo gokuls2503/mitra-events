@@ -37,6 +37,9 @@ class SiteSettings(TimeStampedModel):
     hero_title = models.CharField(max_length=120, blank=True)
     hero_subtitle = models.CharField(max_length=240, blank=True)
     hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+    seo_description = models.CharField(
+        max_length=160, blank=True, help_text="Home page summary shown in Google results. Blank uses a built-in one."
+    )
     about_title = models.CharField(max_length=120, blank=True)
     about_body = models.TextField(blank=True)
     about_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
@@ -47,6 +50,8 @@ class SiteSettings(TimeStampedModel):
     gallery_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
     contact_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
     estimate_hero_image = models.ImageField(upload_to="site/", blank=True, validators=[validate_image_size])
+    # Which part of each banner photo shows, as {"about_hero_image": [x, y]} in percent; missing = centred.
+    banner_positions = models.JSONField(default=dict, blank=True)
 
     stat_events = models.PositiveIntegerField(default=0, help_text="Events completed")
     stat_years = models.PositiveIntegerField(default=0, help_text="Years of experience")

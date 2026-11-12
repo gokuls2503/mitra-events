@@ -1,5 +1,6 @@
 import datetime
 import io
+import os
 from decimal import Decimal as D
 
 import pytest
@@ -106,6 +107,54 @@ class TestImageUpload:
         assert c.get(f"/api/v1/crm/leads/{lead.pk}/images/?section=stage").data[0]["caption"] == "Empty hall"
         assert c.delete(f"/api/v1/crm/lead-images/{img_id}/").status_code == 204
         assert not LeadImage.objects.exists()
+
+
+def mp4(name="clip.mp4", brand=b"isom"):
+    return SimpleUploadedFile(name, b"\x00\x00\x00\x18ftyp" + brand + b"\x00" * 64, content_type="video/mp4")
+
+
+@pytest.mark.django_db
+class TestVideoUpload:
+    def test_video_with_cover_frame(self, team, lead):
+        res = upload(api(team["staff"]), lead, video=mp4(), image=png())
+        assert res.status_code == 201, res.data
+        assert res.data["video"].startswith("/media/leads/") and res.data["video"].endswith(".mp4")
+        assert res.data["thumbnail"] and res.data["source"] == "client"
+
+    def test_iphone_mov_without_cover_frame(self, team, lead):
+        data = {"video": mp4("IMG_1.MOV", brand=b"qt  "), "section": "stage", "source": "ours"}
+        res = api(team["manager"]).post(f"/api/v1/crm/leads/{lead.pk}/images/", data, format="multipart")
+        assert res.status_code == 201, res.data
+        assert res.data["video"].endswith(".mov") and res.data["image"] is None and res.data["thumbnail"] is None
+
+    def test_rejects_file_that_is_not_a_video(self, team, lead):
+        fake = SimpleUploadedFile("evil.mp4", b"<?php system($_GET['x']); ?>" + b"\x00" * 20, content_type="video/mp4")
+        res = upload(api(team["manager"]), lead, video=fake)
+        assert res.status_code == 400 and "video" in res.data
+        assert not LeadImage.objects.exists()
+
+    def test_rejects_oversized_video(self, team, lead, monkeypatch):
+        monkeypatch.setattr(references, "MAX_VIDEO_MB", 0.00001)
+        res = upload(api(team["manager"]), lead, video=mp4())
+        assert res.status_code == 400 and "MB" in str(res.data)
+
+    def test_video_limit_per_section(self, team, lead, monkeypatch):
+        monkeypatch.setattr(references, "MAX_VIDEOS_PER_SECTION", 1)
+        c = api(team["manager"])
+        assert upload(c, lead, video=mp4()).status_code == 201
+        assert upload(c, lead, video=mp4()).status_code == 400
+        assert upload(c, lead).status_code == 201  # photos are still allowed
+
+    def test_needs_a_photo_or_video(self, team, lead):
+        data = {"section": "design", "source": "ours"}
+        assert api(team["manager"]).post(f"/api/v1/crm/leads/{lead.pk}/images/", data, format="multipart").status_code == 400
+
+    def test_delete_removes_the_video_file(self, team, lead):
+        c = api(team["manager"])
+        res = upload(c, lead, video=mp4())
+        path = LeadImage.objects.get().video.path
+        assert c.delete(f"/api/v1/crm/lead-images/{res.data['id']}/").status_code == 204
+        assert not os.path.exists(path)
 
 
 # --- Items ----------------------------------------------------------------------------------

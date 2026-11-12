@@ -32,16 +32,19 @@ ZERO = Decimal("0.00")
 class LeadImageSerializer(serializers.ModelSerializer):
     image = RelativeImageField(read_only=True)
     thumbnail = RelativeImageField(read_only=True)
+    video = RelativeImageField(read_only=True)
     uploaded_by_name = serializers.CharField(source="uploaded_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = LeadImage
-        fields = ["id", "lead", "section", "image", "thumbnail", "caption", "source", "uploaded_by_name", "created_at"]
+        fields = ["id", "lead", "section", "image", "thumbnail", "video", "caption", "source", "uploaded_by_name", "created_at"]
         read_only_fields = ["lead", "created_at"]
 
 
 class ImageUploadSerializer(serializers.Serializer):
-    image = serializers.FileField()  # checked by references.process_upload
+    # A photo, or a video with its cover frame as `image` (the cover is optional). Both are checked in references.
+    image = serializers.FileField(required=False)
+    video = serializers.FileField(required=False)
     section = serializers.ChoiceField(choices=LeadImage.Section.choices)
     source = serializers.ChoiceField(choices=LeadImage.Source.choices, default=LeadImage.Source.OURS)
     caption = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
@@ -149,7 +152,7 @@ class LeadReferenceAccess:
 
 
 class LeadImagesView(LeadReferenceAccess, APIView):
-    """GET /crm/leads/{id}/images/?section=  ·  POST multipart: image, section, source, caption"""
+    """GET /crm/leads/{id}/images/?section=  ·  POST multipart: image and/or video, section, source, caption"""
 
     parser_classes = [MultiPartParser, FormParser]
 
@@ -166,7 +169,8 @@ class LeadImagesView(LeadReferenceAccess, APIView):
         body = ImageUploadSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         try:
-            img = references.add_image(lead=lead, upload=body.validated_data["image"], user=request.user, **{k: v for k, v in body.validated_data.items() if k != "image"})
+            data = dict(body.validated_data)
+            img = references.add_image(lead=lead, upload=data.pop("image", None), video=data.pop("video", None), user=request.user, **data)
         except DjangoValidationError as exc:
             raise as_drf_error(exc)
         return Response(LeadImageSerializer(img).data, status=status.HTTP_201_CREATED)
@@ -206,6 +210,7 @@ class LeadImageViewSet(LeadReferenceAccess, mixins.UpdateModelMixin, mixins.Dest
     def perform_destroy(self, instance):
         instance.image.delete(save=False)
         instance.thumbnail.delete(save=False)
+        instance.video.delete(save=False)
         instance.delete()
 
 

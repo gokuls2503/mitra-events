@@ -132,6 +132,19 @@ class TestPublic:
         row = APIClient().get("/api/v1/website/gallery/").data[0]
         assert row["gallery_category_name"] == "Wedding" and row["category"] == "WEDDING"
 
+    @pytest.mark.parametrize("name", ["IMG_2041", "IMG-20210713-WA0073", "WhatsApp Image 2026-11-05 at 12.55.54", "20230708_104512", "DSC0012 (1)"])
+    def test_camera_file_names_are_not_shown(self, name):
+        wedding = GalleryCategory.objects.get(name="Wedding")
+        GalleryImage.objects.create(image=jpeg(), category=EventType.WEDDING, gallery_category=wedding, caption=name, alt_text=name)
+        row = APIClient().get("/api/v1/website/gallery/").data[0]
+        assert row["caption"] == "" and row["alt_text"] == "Wedding decoration by Mitra Events"
+
+    def test_real_captions_are_kept(self):
+        wedding = GalleryCategory.objects.get(name="Wedding")
+        GalleryImage.objects.create(image=jpeg(), category=EventType.WEDDING, gallery_category=wedding, caption="Imperial mandap", alt_text="Gold mandap")
+        row = APIClient().get("/api/v1/website/gallery/").data[0]
+        assert row["caption"] == "Imperial mandap" and row["alt_text"] == "Gold mandap"
+
 
 @pytest.mark.django_db
 class TestWebsiteSync:

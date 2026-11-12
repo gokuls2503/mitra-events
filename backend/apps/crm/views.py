@@ -11,6 +11,7 @@ Access (mirrors the approved role matrix):
 import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Count, Prefetch, Q, Sum
 from django.utils import timezone
 from django_filters import rest_framework as filters
@@ -21,6 +22,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.core.permissions import RoleAccess
+from apps.core.validators import normalize_indian_phone
 
 from . import serializers as s
 from . import services
@@ -109,10 +111,34 @@ class LeadViewSet(viewsets.ModelViewSet):
         data = dict(serializer.validated_data)
         if is_staff_member(user):
             data["assigned_to"] = user  # staff own what they enter
+        stage = data.pop("status", Lead.Status.NEW)
+        lost_reason = data.pop("lost_reason", "")
+        if stage == Lead.Status.WON and not is_manager(user):
+            raise PermissionDenied("Only the owner or a manager can confirm bookings.")
         try:
-            serializer.instance = services.create_lead(user=user, **data)
+            # One step: if the booking can't be made, the lead isn't saved either.
+            with transaction.atomic():
+                lead = services.create_lead(user=user, **data)
+                if stage == Lead.Status.WON:
+                    services.convert_to_booking(
+                        lead,
+                        user=user,
+                        title=f"{lead.name} — {lead.event_types_label or 'Event'}",
+                        event_type=lead.event_type,
+                        event_types=lead.event_types,
+                        event_date=lead.event_date,
+                        setup_date=lead.setup_date,
+                        setup_time=lead.setup_time,
+                        venue=lead.venue,
+                        guest_count=lead.guest_count,
+                        agreed_amount=lead.budget,
+                        notes=lead.message,
+                    )
+                elif stage != Lead.Status.NEW:
+                    services.change_status(lead, stage, user=user, lost_reason=lost_reason)
         except DjangoValidationError as exc:
             raise as_drf_error(exc)
+        serializer.instance = Lead.objects.get(pk=lead.pk)
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
@@ -172,6 +198,26 @@ class LeadViewSet(viewsets.ModelViewSet):
         client_data, booking_data = body.split()
         booking = self._run(services.convert_to_booking, lead, user=request.user, client_data=client_data, **booking_data)
         return Response(s.BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path="phone-matches")
+    def phone_matches(self, request):
+        """Clients and leads that already use this mobile number, so the new lead form can warn."""
+        try:
+            phone = normalize_indian_phone(request.query_params.get("phone", ""))
+        except DjangoValidationError as exc:
+            raise ValidationError({"phone": exc.messages})
+        clients = Client.objects.filter(Q(phone=phone) | Q(alt_phone=phone)).order_by("name")
+        # Staff only see their own leads, as everywhere else.
+        leads = self.get_queryset().filter(Q(phone=phone) | Q(extra_phones__contains=[phone])).order_by("-created_at")[:10]
+        return Response(
+            {
+                "clients": [{"id": c.id, "name": c.name} for c in clients],
+                "leads": [
+                    {"id": lead.id, "name": lead.name, "status_label": lead.get_status_display(), "event_date": lead.event_date, "venue": lead.venue}
+                    for lead in leads
+                ],
+            }
+        )
 
     @action(detail=False, methods=["get"])
     def pipeline(self, request):

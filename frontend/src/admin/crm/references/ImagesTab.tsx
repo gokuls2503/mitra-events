@@ -1,6 +1,6 @@
 import { isAxiosError } from 'axios'
 import clsx from 'clsx'
-import { ImagePlus, RefreshCw } from 'lucide-react'
+import { ImagePlus, RefreshCw, Video } from 'lucide-react'
 import { useId, useState } from 'react'
 
 import { apiErrorMessage } from '@/shared/api/client'
@@ -9,9 +9,14 @@ import { Spinner } from '@/shared/ui/Spinner'
 import { uploadLeadImage, useInvalidateImages, useLeadImages, type Section, type Source } from './api'
 import { compressImage } from './compress'
 import { ImageViewer } from './ImageViewer'
+import { MediaThumb } from './MediaThumb'
 import { SourceBadge } from './SourceBadge'
+import { videoCover } from './videoCover'
 
 type Filter = 'all' | Source
+
+// Videos go up as recorded, so keep them to what a phone sends in a minute or two.
+const MAX_VIDEO_MB = 100
 
 interface UploadState {
   done: number
@@ -22,6 +27,7 @@ interface UploadState {
 
 export function ImagesTab({ leadId, section, canWrite }: { leadId: number; section: Section; canWrite: boolean }) {
   const inputId = useId()
+  const videoInputId = useId()
   const { data, isLoading, error, refetch } = useLeadImages(leadId)
   const refresh = useInvalidateImages(leadId)
   const [source, setSource] = useState<Source>('client')
@@ -42,8 +48,14 @@ export function ImagesTab({ leadId, section, canWrite }: { leadId: number; secti
     // One at a time: steady progress on slow mobile connections, and one failure doesn't stop the rest.
     for (const file of list) {
       try {
-        const blob = await compressImage(file)
-        await uploadLeadImage(leadId, blob, { section, source: isDesign ? source : 'ours' }, (f) =>
+        let files: { photo?: Blob | null; video?: File }
+        if (file.type.startsWith('video/')) {
+          if (file.size > MAX_VIDEO_MB * 1024 * 1024) throw new Error(`“${file.name}” is over ${MAX_VIDEO_MB} MB. Send a shorter clip.`)
+          files = { video: file, photo: await videoCover(file) }
+        } else {
+          files = { photo: await compressImage(file) }
+        }
+        await uploadLeadImage(leadId, files, { section, source: isDesign ? source : 'ours' }, (f) =>
           setUpload((u) => (u ? { ...u, fraction: f } : u)),
         )
       } catch (err) {
@@ -72,19 +84,36 @@ export function ImagesTab({ leadId, section, canWrite }: { leadId: number; secti
             >
               <ImagePlus className="size-4" /> Choose from Gallery / Camera
             </label>
+            <label
+              htmlFor={videoInputId}
+              className={clsx(
+                'inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-stone-300 bg-white px-4 text-sm font-medium text-stone-800 hover:bg-stone-100',
+                uploading && 'pointer-events-none opacity-60',
+              )}
+            >
+              <Video className="size-4" /> Add video
+            </label>
             {/* No `capture` attribute: phones then offer both the Gallery and the Camera. */}
-            <input
-              id={inputId}
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={uploading}
-              className="sr-only"
-              onChange={(e) => {
-                void handleFiles(e.target.files)
-                e.target.value = '' // allow choosing the same files again
-              }}
-            />
+            {(
+              [
+                [inputId, 'image/*'],
+                [videoInputId, 'video/*'],
+              ] as const
+            ).map(([id, accept]) => (
+              <input
+                key={id}
+                id={id}
+                type="file"
+                accept={accept}
+                multiple
+                disabled={uploading}
+                className="sr-only"
+                onChange={(e) => {
+                  void handleFiles(e.target.files)
+                  e.target.value = '' // allow choosing the same files again
+                }}
+              />
+            ))}
           </div>
           {isDesign && (
             <div role="radiogroup" aria-label="These images are" className="flex gap-1">
@@ -175,18 +204,18 @@ export function ImagesTab({ leadId, section, canWrite }: { leadId: number; secti
       {data && shown.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-stone-200 px-4 py-10 text-center text-sm text-stone-500">
           {inSection.length > 0
-            ? 'No images match this filter.'
+            ? 'Nothing matches this filter.'
             : isDesign
-              ? 'No design references yet. Add your own ideas or the images the client sent on WhatsApp.'
-              : 'No venue photos yet. Add photos of the empty hall, stage, walls and entrance.'}
+              ? 'No design references yet. Add your own ideas or the photos and videos the client sent on WhatsApp.'
+              : 'No venue photos or videos yet. Add the empty hall, stage, walls and entrance.'}
         </div>
       )}
       <ul className="grid grid-cols-2 gap-3">
         {shown.map((img, i) => (
           <li key={img.id}>
-            <button onClick={() => setOpen(i)} className="group block w-full text-left" aria-label={`Open ${img.caption || 'image'}`}>
-              <span className="relative block aspect-4/3 overflow-hidden rounded-xl bg-stone-100">
-                <img src={img.thumbnail ?? img.image} alt="" loading="lazy" className="size-full object-cover transition group-hover:scale-105" />
+            <button onClick={() => setOpen(i)} className="group block w-full text-left" aria-label={`Open ${img.caption || (img.video ? 'video' : 'image')}`}>
+              <span className="relative block">
+                <MediaThumb item={img} className="aspect-4/3 rounded-xl" />
                 <SourceBadge image={img} className="absolute top-2 left-2" />
               </span>
               <span className="mt-1 block truncate text-xs text-stone-600">{img.caption || <span className="text-stone-400">No caption</span>}</span>

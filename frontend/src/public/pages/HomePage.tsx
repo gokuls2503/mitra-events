@@ -3,15 +3,15 @@ import { ArrowRight, Calculator } from 'lucide-react'
 import { motion, type Variants } from 'motion/react'
 import { Link } from 'react-router-dom'
 
-import { galleryQuery, servicesQuery, settingsQuery, testimonialsQuery } from '../api'
+import { galleryQuery, servicesQuery, settingsQuery, testimonialsQuery, type SiteSettings } from '../api'
 import { EventTypesLine, LotusDivider } from '../components/Brand'
 import { ServicePanel, TestimonialCard } from '../components/Cards'
 import { useHeroNav } from '../components/HeroNav'
 import { HowWeWork } from '../components/HowWeWork'
-import { heroImage } from '../components/PageHero'
+import { heroImage, heroPosition } from '../components/PageHero'
 import { CountUp, Reveal } from '../components/Reveal'
 import { SectionHeading } from '../components/SectionHeading'
-import { pageTitle } from '../head'
+import { pageTitle, serviceAreas } from '../head'
 import { Seo } from '../Seo'
 
 const heroText: Variants = {
@@ -39,10 +39,7 @@ export default function HomePage() {
     <div className="bg-blush-light">
       <Seo
         title={title}
-        description={
-          site?.hero_subtitle ||
-          'Wedding, birthday, corporate and traditional event decorations and management in Coimbatore.'
-        }
+        description={site?.seo_description || homeDescription(site)}
         path="/"
         image={site?.hero_image}
       />
@@ -50,7 +47,15 @@ export default function HomePage() {
       {/* Hero — the home banner photo, full width; the transparent navbar sits on top of it. */}
       <section className="relative isolate overflow-hidden bg-brand-900">
         {/* A light dark shade keeps the photo sharp and the white text readable. */}
-        {site && <img src={heroImage(site, 'home')} alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover" />}
+        {site && (
+          <img
+            src={heroImage(site, 'home')}
+            alt=""
+            fetchPriority="high"
+            style={{ objectPosition: heroPosition(site, 'home') }}
+            className="absolute inset-0 -z-20 size-full object-cover"
+          />
+        )}
         <div className="absolute inset-0 -z-20 bg-linear-to-b from-black/55 via-black/30 to-black/50" />
         <div className="mx-auto flex min-h-[88vh] w-full max-w-4xl items-center justify-center px-4 pt-28 pb-24 sm:px-6 sm:pt-32">
           <div className="text-center">
@@ -220,4 +225,11 @@ export default function HomePage() {
       </section>
     </div>
   )
+}
+
+
+/** Google's summary for the home page when the admin hasn't written one. */
+function homeDescription(site: SiteSettings | undefined) {
+  const call = site?.phone ? ` Call ${site.phone} for a quote.` : ''
+  return `Wedding, reception, engagement and birthday stage decoration in ${serviceAreas(site).join(', ')} by Mitra Events.${call}`
 }

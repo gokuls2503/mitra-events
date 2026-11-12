@@ -109,7 +109,7 @@ def reference_photo(lead):
     if lead is None:
         return None
     for section in ("stage", "design"):
-        img = lead.images.filter(section=section).order_by("created_at", "id").first()
+        img = lead.images.filter(section=section, video="").order_by("created_at", "id").first()  # never a video's cover frame
         if img and img.image and Path(img.image.path).exists():
             return Path(img.image.path).as_uri()
     return None

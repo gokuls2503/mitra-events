@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useContext, useEffect } from 'react'
 
 import { settingsQuery } from './api'
-import { absolute, HeadCollectorContext, localBusinessJsonLd, SITE_URL, type HeadData } from './head'
+import { absolute, DEFAULT_SHARE_IMAGE, HeadCollectorContext, localBusinessJsonLd, SITE_URL, type HeadData } from './head'
 
 export function Seo(props: HeadData) {
   const collector = useContext(HeadCollectorContext)
@@ -21,7 +21,7 @@ export function Seo(props: HeadData) {
     setMeta('property', 'og:title', title)
     setMeta('property', 'og:description', description)
     setMeta('property', 'og:url', `${SITE_URL}${path}`)
-    setMeta('property', 'og:image', absolute(image) ?? '')
+    setMeta('property', 'og:image', absolute(image || site?.hero_image || DEFAULT_SHARE_IMAGE) ?? '')
     setLink('canonical', `${SITE_URL}${path}`)
     let script = document.getElementById('site-jsonld')
     if (!script) {
@@ -31,7 +31,7 @@ export function Seo(props: HeadData) {
       document.head.appendChild(script)
     }
     script.textContent = jsonLd.replace(/</g, '\\u003c')
-  }, [title, description, path, image, noindex, jsonLd])
+  }, [title, description, path, image, noindex, jsonLd, site?.hero_image])
 
   return null
 }

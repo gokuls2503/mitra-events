@@ -153,7 +153,7 @@ function FilterSelect({ label, value, onChange, children }: { label: string; val
 function Board({ filters }: { filters: Params }) {
   const { hasRole } = useAuth()
   const navigate = useNavigate()
-  const { data, isLoading, error } = useLeads({ ...filters, board: true, page_size: 500, ordering: '-created_at' })
+  const { data, isLoading, error } = useLeads({ ...filters, board: true, page_size: 500, ordering: 'name' })
   const { data: pipeline } = usePipeline({ ...filters, board: true })
   const statusMutation = useCrmMutation(crm.changeStatus)
   const [dragOver, setDragOver] = useState<LeadStatus | null>(null)
@@ -255,7 +255,10 @@ function LeadCard({ lead, draggable }: { lead: Lead; draggable: boolean }) {
     >
       <Link to={`/admin/crm/leads/${lead.id}`} className="block p-3" draggable={false}>
         <div className="flex items-start justify-between gap-2">
-          <p className="leading-tight font-medium text-stone-900">{lead.name}</p>
+          <p className="leading-tight font-medium text-stone-900">
+            {lead.name}
+            {lead.venue && <span className="font-normal text-stone-500"> · {lead.venue}</span>}
+          </p>
           {initials ? (
             <span title={lead.assigned_to_detail?.full_name} className="grid size-6 shrink-0 place-items-center rounded-full bg-brand-100 text-[10px] font-semibold text-brand-700">
               {initials}
@@ -290,7 +293,7 @@ function LeadCard({ lead, draggable }: { lead: Lead; draggable: boolean }) {
 function LeadList({ filters }: { filters: Params }) {
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
-  const { data, isLoading, error, isFetching } = useLeads({ ...filters, status, page, page_size: PAGE_SIZE, ordering: '-created_at' })
+  const { data, isLoading, error, isFetching } = useLeads({ ...filters, status, page, page_size: PAGE_SIZE, ordering: 'name' })
 
   return (
     <div>
@@ -334,6 +337,7 @@ function LeadList({ filters }: { filters: Params }) {
                       <Link to={`/admin/crm/leads/${l.id}`} className="font-medium text-brand-800 hover:underline">
                         {l.name}
                       </Link>
+                      {l.venue && <span className="text-stone-500"> · {l.venue}</span>}
                       <span className="block text-xs text-stone-500">{prettyPhone(l.phone)}</span>
                     </td>
                     <td className="px-4 py-3">

@@ -9,8 +9,10 @@ export interface LeadImage {
   id: number
   lead: number
   section: Section
-  image: string
+  /** The photo, or a video's cover frame (empty if the phone couldn't make one). */
+  image: string | null
   thumbnail: string | null
+  video: string | null
   caption: string
   source: Source
   uploaded_by_name: string | null
@@ -89,15 +91,16 @@ export const useMaterials = (params: { active?: boolean } = {}) =>
     staleTime: 60_000,
   })
 
-/** Uploads one (already compressed) image, reporting progress 0–1. */
+/** Uploads one (already compressed) photo, or a video with its cover frame, reporting progress 0–1. */
 export async function uploadLeadImage(
   leadId: number,
-  file: Blob,
+  files: { photo?: Blob | null; video?: File },
   fields: { section: Section; source: Source; caption?: string },
   onProgress: (fraction: number) => void,
 ) {
   const form = new FormData()
-  form.append('image', file, 'photo.jpg')
+  if (files.photo) form.append('image', files.photo, 'photo.jpg')
+  if (files.video) form.append('video', files.video, files.video.name)
   form.append('section', fields.section)
   form.append('source', fields.source)
   form.append('caption', fields.caption ?? '')

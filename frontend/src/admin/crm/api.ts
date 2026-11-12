@@ -43,6 +43,7 @@ export interface Lead {
   /** "HH:MM:SS" */
   start_time: string | null
   setup_time: string | null
+  setup_date: string | null
   venue: string
   venue_address: string
   coordinator: number | null
@@ -242,7 +243,14 @@ export function useCrmMutation<TVars, TResult = unknown>(fn: (vars: TVars) => Pr
   })
 }
 
+/** Clients and leads already using a mobile number (the new lead form warns about them). */
+export interface PhoneMatches {
+  clients: { id: number; name: string }[]
+  leads: { id: number; name: string; status_label: string; event_date: string | null; venue: string }[]
+}
+
 export const crm = {
+  phoneMatches: async (phone: string) => (await api.get<PhoneMatches>('/crm/leads/phone-matches/', { params: { phone } })).data,
   createLead: async (data: Partial<Lead>) => (await api.post<Lead>('/crm/leads/', data)).data,
   updateLead: async ({ id, ...data }: Partial<Lead> & { id: number }) => (await api.patch<Lead>(`/crm/leads/${id}/`, data)).data,
   deleteLead: (id: number) => api.delete(`/crm/leads/${id}/`),

@@ -7,7 +7,7 @@ import { directionsLink, mapsLink, telLink, waLink } from '@/shared/format'
 
 import { packagesQuery, servicesQuery, settingsQuery } from '../api'
 import { EnquiryForm } from '../components/LazyEnquiryForm'
-import { heroImage, PageHero } from '../components/PageHero'
+import { heroImage, heroPosition, PageHero } from '../components/PageHero'
 import { Reveal } from '../components/Reveal'
 import { pageTitle } from '../head'
 import { Seo } from '../Seo'
@@ -29,7 +29,7 @@ export default function ContactPage() {
         description={`Call, WhatsApp or send an enquiry to ${site?.business_name ?? 'Mitra Events'} in ${site?.city ?? 'Coimbatore'}.`}
         path="/contact"
       />
-      <PageHero eyebrow="Contact" title="Let's create something" accent="Memorable" image={heroImage(site, 'contact')} />
+      <PageHero eyebrow="Contact" title="Let's create something" accent="Memorable" image={heroImage(site, 'contact')} position={heroPosition(site, 'contact')} />
 
       {/* Two equal columns; the contact cards stretch so the left side ends level with the form. */}
       <section className="mx-auto grid max-w-7xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-2">

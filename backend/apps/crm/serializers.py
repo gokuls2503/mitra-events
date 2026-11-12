@@ -110,6 +110,7 @@ class LeadSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
             "end_date",
             "start_time",
             "setup_time",
+            "setup_date",
             "venue",
             "venue_address",
             "coordinator",
@@ -159,6 +160,7 @@ class LeadSerializer(EventTypesFieldsMixin, serializers.ModelSerializer):
         end = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start and end and end < start:
             raise serializers.ValidationError({"end_date": "End date can't be before the event date."})
+        check_setup_date(attrs.get("setup_date", getattr(self.instance, "setup_date", None)), start, end)
         return attrs
 
     def get_booking(self, lead):
@@ -177,9 +179,28 @@ class LeadCreateSerializer(LeadSerializer):
     """Staff entering a phone/walk-in enquiry may also pick the owner."""
 
     assigned_to = serializers.PrimaryKeyRelatedField(queryset=assignable_users, required=False, allow_null=True)
+    # The stage the enquiry is already at. Won confirms the booking straight away, so it needs
+    # what Confirm booking needs.
+    status = serializers.ChoiceField(choices=Lead.Status.choices, required=False)
+    lost_reason = serializers.CharField(required=False, allow_blank=True, max_length=200)
 
     class Meta(LeadSerializer.Meta):
-        read_only_fields = [f for f in LeadSerializer.Meta.read_only_fields if f != "assigned_to"]
+        read_only_fields = [f for f in LeadSerializer.Meta.read_only_fields if f not in ("assigned_to", "status", "lost_reason")]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        status = attrs.get("status", Lead.Status.NEW)
+        if status == Lead.Status.LOST and not attrs.get("lost_reason", "").strip():
+            raise serializers.ValidationError({"lost_reason": "Please say why the lead was lost."})
+        if status == Lead.Status.WON:
+            missing = {
+                "event_types": "Pick at least one event type." if not attrs.get("event_types") else None,
+                "event_date": "Event date is needed to confirm the booking." if not attrs.get("event_date") else None,
+                "venue": "Venue is needed to confirm the booking." if not attrs.get("venue", "").strip() else None,
+            }
+            if errors := {k: v for k, v in missing.items() if v}:
+                raise serializers.ValidationError(errors)
+        return attrs
 
 
 class StatusChangeSerializer(serializers.Serializer):

@@ -232,6 +232,21 @@ class TestCmsPermissions:
         assert res.data["inclusions"] == ["Stage", "Lights"]
         assert client.patch("/api/v1/cms/settings/", {"tagline": "New"}, format="json").data["tagline"] == "New"
 
+    def test_banner_positions_saved_and_public(self, client):
+        login_as(client, Role.MANAGER)
+        res = client.patch("/api/v1/cms/settings/", {"banner_positions": {"about_hero_image": [30, 72.25]}}, format="json")
+        assert res.status_code == 200, res.data
+        client.logout()
+        assert client.get("/api/v1/website/settings/").data["banner_positions"] == {"about_hero_image": [30, 72.2]}
+
+    @pytest.mark.parametrize(
+        "positions",
+        [{"about_image": [50, 50]}, {"hero_image": [50]}, {"hero_image": [120, 50]}, {"hero_image": ["50", 50]}, ["hero_image"]],
+    )
+    def test_bad_banner_positions_rejected(self, client, positions):
+        login_as(client, Role.MANAGER)
+        assert client.patch("/api/v1/cms/settings/", {"banner_positions": positions}, format="json").status_code == 400
+
     def test_reorder_services(self, client):
         login_as(client, Role.MANAGER)
         a, b, c = (Service.objects.create(name=n, category=EventType.WEDDING, short_description="x", order=i) for i, n in enumerate("ABC"))

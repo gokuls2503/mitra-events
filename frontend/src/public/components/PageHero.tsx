@@ -13,10 +13,12 @@ interface Props {
   intro?: ReactNode
   /** Banner photo, from `heroImage()`; nothing is drawn until the settings have loaded. */
   image: string | undefined
+  /** Which part of the photo shows, from `heroPosition()`. */
+  position?: string
 }
 
 /** Each page's own built-in banner, shown until the admin uploads one in Website content → Settings. */
-const PAGE_HEROES = {
+export const PAGE_HEROES = {
   home: { field: 'hero_image', photo: '/images/hero-stage.jpg' },
   about: { field: 'about_hero_image', photo: '/images/heroes/about.jpg' },
   services: { field: 'services_hero_image', photo: '/images/heroes/services.jpg' },
@@ -35,12 +37,20 @@ export function heroImage(site: SiteSettings | undefined, page: keyof typeof PAG
   return site[field] || photo
 }
 
+/** The part of the page's banner photo the admin chose to show, as a CSS object-position. */
+export function heroPosition(site: SiteSettings | undefined, page: keyof typeof PAGE_HEROES) {
+  const [x, y] = site?.banner_positions?.[PAGE_HEROES[page].field] ?? [50, 50]
+  return `${x}% ${y}%`
+}
+
 /** Photo banner at the top of inner pages, like the home hero. Holds the page's single <h1>. */
-export function PageHero({ eyebrow, title, accent, intro, image }: Props) {
+export function PageHero({ eyebrow, title, accent, intro, image, position }: Props) {
   useHeroNav()
   return (
     <section className="relative isolate overflow-hidden border-b border-gold-200 bg-brand-900">
-      {image && <img src={image} alt="" fetchPriority="high" className="absolute inset-0 -z-20 size-full object-cover" />}
+      {image && (
+        <img src={image} alt="" fetchPriority="high" style={{ objectPosition: position }} className="absolute inset-0 -z-20 size-full object-cover" />
+      )}
       {/* A light dark shade keeps the photo clear and the white text readable. */}
       <div className="absolute inset-0 -z-10 bg-linear-to-b from-black/55 via-black/40 to-black/55" />
       <div className="mx-auto max-w-4xl px-6 pt-40 pb-24 text-center sm:pt-44 sm:pb-28">

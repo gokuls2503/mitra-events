@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useId, useState } from 'react'
 
 import { faqsQuery, settingsQuery, type Faq } from '../api'
-import { heroImage, PageHero } from '../components/PageHero'
+import { heroImage, heroPosition, PageHero } from '../components/PageHero'
 import { PlanCta } from '../components/PlanCta'
 import { CountUp, Reveal } from '../components/Reveal'
 import { SectionHeading } from '../components/SectionHeading'
@@ -18,30 +18,30 @@ const VALUES = [
   { icon: Users, title: 'One team', text: 'Decor, lighting, sound and coordination handled by one accountable team.' },
 ]
 
-// "Who we are" slideshow. The two placeholder slides wait for real Mitra photos.
+// "Who we are" slideshow.
 const SLIDES = [
   {
-    image: '/images/about/stage-close.jpg',
+    image: '/images/about/stage-floral.jpg',
     title: 'Stages that feel like you',
     text: 'Glowing petal backdrops, chandeliers and fresh flower borders, designed around the couple.',
   },
   {
-    image: '/images/about/hall-wide.jpg',
+    image: '/images/about/mandapam.jpg',
     title: 'Planned down to the last chair',
     text: 'Seating, lighting and stage set out to plan, so the hall is ready long before guests arrive.',
   },
   {
-    image: '/images/about/stage-night.jpg',
+    image: '/images/about/stage-evening.jpg',
     title: 'Lit for the evening',
     text: 'Warm lighting that brings out every flower and photographs beautifully after dark.',
   },
   {
-    image: '/images/about/placeholder-reception.jpg',
+    image: '/images/about/reception-drapes.jpg',
     title: 'Receptions to remember',
     text: 'LED backdrops and grand stages for the evening your families celebrate together.',
   },
   {
-    image: '/images/about/placeholder-engagement.jpg',
+    image: '/images/about/hall-setup.jpg',
     title: 'Every ritual, honoured',
     text: 'Gold and ivory decor for engagements and traditional functions, true to your customs.',
   },
@@ -61,7 +61,7 @@ export default function AboutPage() {
         path="/about"
         image={site?.about_image}
       />
-      <PageHero eyebrow="About us" title={site?.about_title || 'Our story'} image={heroImage(site, 'about')} />
+      <PageHero eyebrow="About us" title={site?.about_title || 'Our story'} image={heroImage(site, 'about')} position={heroPosition(site, 'about')} />
 
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
         <Reveal>

@@ -51,6 +51,7 @@ export interface SiteSettings {
   youtube_url: string
   hero_title: string
   hero_subtitle: string
+  seo_description: string
   hero_image: string | null
   about_title: string
   about_body: string
@@ -63,6 +64,8 @@ export interface SiteSettings {
   stat_events: number
   stat_years: number
   stat_clients: number
+  /** Which part of each banner photo shows: [x, y] in percent, keyed by its image field. Missing = centred. */
+  banner_positions: Partial<Record<string, [number, number]>>
 }
 
 export interface Service {
